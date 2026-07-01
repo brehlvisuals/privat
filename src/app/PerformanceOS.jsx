@@ -132,7 +132,7 @@ async function estimateFood(text) {
   const o = JSON.parse(out.replace(/```json|```/g, "").trim());
   return { n: o.n, p: Math.round(o.p), f: Math.round(o.f), c: Math.round(o.c), k: Math.round(o.k), ai: true };
 }
-const COACH_SYS = "Du bist der KI-Coach in Felix' privatem Performance OS. Felix ist pescetarischer Ironman-Triathlet, 26, 186 cm, 83 kg. Er trainiert Schwimmen, Rad, Laufen, Kraft, Calisthenics. Du hast Zugriff auf seine aktuellen App-Daten (siehe Abschnitt AKTUELLE DATEN) — nutze sie und antworte konkret und datenbasiert. Erfinde keine Werte; wenn etwas fehlt (z.B. Aktivität noch nicht von Coros synchronisiert), sag das ehrlich. Sag NIEMALS, dass du kein Tracking-System hast oder eine andere App nötig wäre — die geloggten Mahlzeiten, Trainings und Health-Werte stehen dir unten zur Verfügung. Antworte kurz, konkret und auf Deutsch in der Du-Form. Kein Ersatz für Arzt/Coach bei medizinischen Fragen.";
+const COACH_SYS = "Du bist der KI-Coach in Felix' privatem Performance OS. Felix ist pescetarischer Ironman-Triathlet, 26, 186 cm, 83 kg. Er trainiert Schwimmen, Rad, Laufen, Kraft, Calisthenics. Du hast Zugriff auf seine aktuellen App-Daten (siehe Abschnitt AKTUELLE DATEN) — nutze sie und antworte konkret und datenbasiert. Erfinde keine Werte; wenn etwas fehlt (z.B. Aktivität noch nicht von Coros synchronisiert), sag das ehrlich. Sag NIEMALS, dass du kein Tracking-System hast oder eine andere App nötig wäre — die geloggten Mahlzeiten, Trainings und Health-Werte stehen dir unten zur Verfügung. Wenn Felix eine zusammengesetzte Mahlzeit nennt (z.B. 'Brötchen mit Frischkäse und 5 Eiern'), logge JEDE Zutat als EIGENEN log_meal-Aufruf (ein Aufruf pro Lebensmittel, je mit Menge/Einheit + eigenen Nährwerten) — fasse sie NICHT zu einem Eintrag zusammen. Antworte kurz, konkret und auf Deutsch in der Du-Form. Kein Ersatz für Arzt/Coach bei medizinischen Fragen.";
 
 // Baut aus dem echten App-Zustand einen kompakten Live-Kontext für den Coach.
 function buildCoachContext(data) {
@@ -223,7 +223,11 @@ function Coach({ msgs, setMsgs, close, data, commit }) {
     let nutri = { ...data.nutrition };
     for (const b of logs) {
       const meal = COACH_MEALS[b.input.meal] ? b.input.meal : "snack";
-      const e = { n: String(b.input.name || "Mahlzeit"), k: Math.round(Number(b.input.kcal) || 0), p: Math.round(Number(b.input.protein) || 0), f: Math.round(Number(b.input.fat) || 0), c: Math.round(Number(b.input.carbs) || 0), ai: true };
+      const amt = Number(b.input.amount) || 1;
+      const unit = b.input.unit || "Portion";
+      const base = { k: Math.round(Number(b.input.kcal) || 0), p: Math.round(Number(b.input.protein) || 0), f: Math.round(Number(b.input.fat) || 0), c: Math.round(Number(b.input.carbs) || 0) };
+      const label = String(b.input.name || "Mahlzeit") + (b.input.amount ? " · " + amt + " " + (UNIT_LABEL[unit] || unit) : "");
+      const e = { n: label, k: base.k, p: base.p, f: base.f, c: base.c, ai: true, amount: amt, unit, per: amt, base };
       const day = nutri[today] || emptyDay();
       nutri = { ...nutri, [today]: { ...day, [meal]: [...(day[meal] || []), e] } };
     }
@@ -477,7 +481,7 @@ function Detail({ ex, sess, context, back }) {
 
 /* ================= FOOD ================= */
 function Food({ data, commit }) {
-  const [date, setDate] = useState(today); const [addTo, setAddTo] = useState(null); const [showSet, setShowSet] = useState(false);
+  const [date, setDate] = useState(today); const [addTo, setAddTo] = useState(null); const [showSet, setShowSet] = useState(false); const [edit, setEdit] = useState(null);
   const touch = useRef(null); const set = data.settings;
   const day = (data.nutrition && data.nutrition[date]) || emptyDay();
   const all = [].concat(...MEALS.map(([k]) => day[k] || []));
@@ -488,6 +492,7 @@ function Food({ data, commit }) {
   const setDay = (next) => commit({ ...data, nutrition: { ...data.nutrition, [date]: next } });
   const addItem = (meal, item) => setDay({ ...day, [meal]: [...(day[meal] || []), item] });
   const delItem = (meal, idx) => setDay({ ...day, [meal]: day[meal].filter((_, j) => j !== idx) });
+  const updItem = (meal, idx, ne) => setDay({ ...day, [meal]: day[meal].map((x, j) => (j === idx ? ne : x)) });
   const onTS = (e) => { touch.current = e.touches[0].clientX; };
   const onTE = (e) => { if (touch.current == null) return; const dx = e.changedTouches[0].clientX - touch.current; if (Math.abs(dx) > 55) setDate((d) => shiftDate(d, dx < 0 ? 1 : -1)); touch.current = null; };
 
@@ -529,7 +534,7 @@ function Food({ data, commit }) {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: items.length ? 8 : 0 }}><span style={{ fontSize: 15, fontWeight: 720 }}>{label}</span><span style={{ fontSize: 12, color: H.faint, fontVariantNumeric: "tabular-nums" }}>{mk} kcal</span></div>
             {items.map((m, i) => (
               <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderTop: "1px solid " + H.line }}>
-                <div style={{ flex: 1 }}><span style={{ fontSize: 13.5 }}>{m.n}{m.ai && <Sparkles size={11} color={H.blue} style={{ marginLeft: 5 }} />}</span><div style={{ fontSize: 11, color: H.faint, fontVariantNumeric: "tabular-nums", marginTop: 1 }}>{m.p}P · {m.f}F · {m.c}K · {m.k} kcal</div></div>
+                <div onClick={() => setEdit({ meal: k, idx: i })} style={{ flex: 1, cursor: "pointer" }}><span style={{ fontSize: 13.5 }}>{m.n}{m.ai && <Sparkles size={11} color={H.blue} style={{ marginLeft: 5 }} />}</span><div style={{ fontSize: 11, color: H.faint, fontVariantNumeric: "tabular-nums", marginTop: 1 }}>{m.p}P · {m.f}F · {m.c}K · {m.k} kcal</div></div>
                 <button onClick={() => delItem(k, i)} style={{ all: "unset", cursor: "pointer", color: H.faint, fontSize: 16, paddingLeft: 8 }}>×</button>
               </div>))}
             <button onClick={() => setAddTo(k)} style={{ width: "100%", marginTop: 9, padding: 9, borderRadius: 10, border: "1px dashed " + H.line, background: "transparent", color: H.sub, fontSize: 13, fontWeight: 650, cursor: "pointer" }}>+ Hinzufügen</button>
@@ -538,6 +543,7 @@ function Food({ data, commit }) {
       </div>
 
       {addTo && <AddFood mealLabel={MEALS.find((m) => m[0] === addTo)[1]} onAdd={(item) => { addItem(addTo, item); setAddTo(null); }} close={() => setAddTo(null)} />}
+      {edit && day[edit.meal] && day[edit.meal][edit.idx] && <EditFood entry={day[edit.meal][edit.idx]} onSave={(ne) => { updItem(edit.meal, edit.idx, ne); setEdit(null); }} onDelete={() => { delItem(edit.meal, edit.idx); setEdit(null); }} close={() => setEdit(null)} />}
       {showSet && <NutSettings set={set} onSave={(s) => { commit({ ...data, settings: s }); setShowSet(false); }} close={() => setShowSet(false)} />}
     </Page>
   );
@@ -602,6 +608,31 @@ function BarcodeScanner({ onDetected, onClose }) {
   );
 }
 
+function EditFood({ entry, onSave, onDelete, close }) {
+  const baseName = (entry.n || "").split(" · ")[0];
+  const base = entry.base || { k: entry.k, p: entry.p, f: entry.f, c: entry.c };
+  const per = Number(entry.per) || Number(entry.amount) || 1;
+  const unit = entry.unit || "Portion";
+  const [amount, setAmount] = useState(String(entry.amount != null ? entry.amount : per));
+  const factor = (Number(amount) || 0) / (per || 1);
+  const sc = (v) => Math.round((Number(v) || 0) * factor);
+  const save = () => onSave({ ...entry, n: baseName + " · " + amount + " " + (UNIT_LABEL[unit] || unit), amount: Number(amount) || 0, unit, per, base, k: sc(base.k), p: sc(base.p), f: sc(base.f), c: sc(base.c) });
+  return (<Sheet close={close} title="Bearbeiten">
+    <div style={{ fontSize: 16, fontWeight: 720, marginBottom: 12 }}>{baseName}</div>
+    <Field label={"Menge in " + (UNIT_LABEL[unit] || unit)}>
+      <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" autoFocus className="fld" style={{ ...sheetInput, fontSize: 20, fontWeight: 750, textAlign: "center" }} />
+    </Field>
+    <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+      <Stat label="kcal" value={sc(base.k)} accent />
+      <Stat label="Protein" value={sc(base.p) + " g"} />
+      <Stat label="Fett" value={sc(base.f) + " g"} />
+      <Stat label="KH" value={sc(base.c) + " g"} />
+    </div>
+    <button onClick={save} style={{ width: "100%", padding: 14, borderRadius: 13, border: "none", background: H.blue, color: "#fff", fontWeight: 750, fontSize: 15, cursor: "pointer" }}>Speichern</button>
+    <button onClick={onDelete} style={{ width: "100%", marginTop: 8, padding: 12, borderRadius: 12, border: "1px solid " + H.line, background: "transparent", color: H.down, fontWeight: 650, fontSize: 13.5, cursor: "pointer" }}>Löschen</button>
+  </Sheet>);
+}
+
 function AddFood({ mealLabel, onAdd, close }) {
   const [mode, setMode] = useState("search"); // search | portion | create | scan
   const [q, setQ] = useState("");
@@ -632,7 +663,12 @@ function AddFood({ mealLabel, onAdd, close }) {
 
   const addPortion = () => {
     if (!selected) return;
-    onAdd({ n: selected.name + " · " + amount + " " + (UNIT_LABEL[selected.base_unit] || selected.base_unit), p: sc(selected.protein), f: sc(selected.fat), c: sc(selected.carbs), k: sc(selected.kcal) });
+    onAdd({
+      n: selected.name + " · " + amount + " " + (UNIT_LABEL[selected.base_unit] || selected.base_unit),
+      p: sc(selected.protein), f: sc(selected.fat), c: sc(selected.carbs), k: sc(selected.kcal),
+      amount: Number(amount) || 0, unit: selected.base_unit, per: Number(selected.per) || 1,
+      base: { k: Number(selected.kcal) || 0, p: Number(selected.protein) || 0, f: Number(selected.fat) || 0, c: Number(selected.carbs) || 0 },
+    });
     close();
   };
 
@@ -655,7 +691,7 @@ function AddFood({ mealLabel, onAdd, close }) {
     setScanBusy(false);
   };
 
-  const est = async () => { if (!text.trim()) return; setAiBusy(true); setErr(""); try { onAdd(await estimateFood(text.trim())); close(); } catch (e) { setErr("KI-Schätzung fehlgeschlagen."); setAiBusy(false); } };
+  const est = async () => { if (!text.trim()) return; setAiBusy(true); setErr(""); try { const r = await estimateFood(text.trim()); onAdd({ ...r, amount: 1, unit: "Portion", per: 1, base: { k: r.k, p: r.p, f: r.f, c: r.c } }); close(); } catch (e) { setErr("KI-Schätzung fehlgeschlagen."); setAiBusy(false); } };
 
   const uf = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const title = mode === "portion" ? "Menge wählen" : mode === "create" ? "Lebensmittel anlegen" : mode === "scan" ? "Barcode scannen" : "Hinzufügen · " + mealLabel;

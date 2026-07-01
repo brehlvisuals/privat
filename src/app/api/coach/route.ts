@@ -14,16 +14,18 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "log_meal",
     description:
-      "Trägt eine gegessene Mahlzeit in Felix' Ernährungstagebuch ein. Schätze realistische Nährwerte für eine typische Portion, wenn keine genauen Werte genannt werden. Nur aufrufen, wenn Felix klar mitteilt, dass er etwas gegessen hat / eintragen möchte.",
+      "Trägt EIN einzelnes Lebensmittel in Felix' Ernährungstagebuch ein. WICHTIG: Bei zusammengesetzten Mahlzeiten (z.B. 'Brötchen mit Frischkäse und 5 Eiern') rufe das Tool MEHRFACH auf — ein Aufruf pro Lebensmittel (Brötchen; Frischkäse; Eier) —, damit jedes einzeln editierbar ist. Fasse NICHT alles zu einem Eintrag zusammen. Gib je Lebensmittel Menge + Einheit + die Nährwerte für DIESE Menge an. Schätze realistische Werte, wenn nötig. Nur aufrufen, wenn Felix mitteilt, dass er etwas gegessen hat.",
     input_schema: {
       type: "object",
       properties: {
         meal: { type: "string", enum: ["breakfast", "lunch", "dinner", "snack"], description: "Mahlzeitenkategorie (Frühstück/Mittag/Abend/Snack)" },
-        name: { type: "string", description: "Kurzer Name des Gerichts, z.B. 'Döner mit allem'" },
-        kcal: { type: "number", description: "Kalorien der Portion" },
-        protein: { type: "number", description: "Protein in Gramm" },
-        fat: { type: "number", description: "Fett in Gramm" },
-        carbs: { type: "number", description: "Kohlenhydrate in Gramm" },
+        name: { type: "string", description: "Name des EINZELNEN Lebensmittels, z.B. 'Körnerbrötchen' oder 'Eier'" },
+        amount: { type: "number", description: "Menge (z.B. 100 für 100 g, oder 5 für 5 Stück)" },
+        unit: { type: "string", enum: ["g", "ml", "piece", "Portion"], description: "Einheit der Menge" },
+        kcal: { type: "number", description: "Kalorien für diese Menge" },
+        protein: { type: "number", description: "Protein in Gramm für diese Menge" },
+        fat: { type: "number", description: "Fett in Gramm für diese Menge" },
+        carbs: { type: "number", description: "Kohlenhydrate in Gramm für diese Menge" },
       },
       required: ["meal", "name", "kcal", "protein", "fat", "carbs"],
     },
