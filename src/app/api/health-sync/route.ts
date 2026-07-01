@@ -129,30 +129,27 @@ export async function POST(request: Request) {
       );
     }
 
-    const rows = days.map((day) => {
+    const records = days.map((day) => {
       const metricsObj: Record<string, number> = {};
-      const row: Record<string, unknown> = {
-        user_id: userId,
-        date: day,
-        source: "apple_health",
-      };
+      const rec: Record<string, unknown> = { date: day, metrics: metricsObj };
       for (const [name, { sum, count }] of Object.entries(byDay[day])) {
         const value = CUMULATIVE.has(name) ? sum : sum / count;
-        const rounded = Math.round(value * 1000) / 1000;
-        metricsObj[name] = rounded;
+        metricsObj[name] = Math.round(value * 1000) / 1000;
         const map = COLUMN_MAP[name];
-        if (map) row[map.col] = map.int ? Math.round(value) : Math.round(value * 100) / 100;
+        if (map) rec[map.col] = map.int ? Math.round(value) : Math.round(value * 100) / 100;
       }
-      row.metrics = metricsObj;
-      return row;
+      return rec;
     });
 
-    const { error } = await supabase
-      .from("daily_context")
-      .upsert(rows, { onConflict: "user_id,date" });
+    // Merge-Upsert via RPC — führt gestückelte (Batch-)Anfragen sauber zusammen,
+    // statt sie zu überschreiben (metrics ||, typisierte Spalten via coalesce).
+    const { error } = await supabase.rpc("ingest_health", {
+      p_user: userId,
+      p_records: records,
+    });
 
     if (error) {
-      console.error("health-sync (HAE) upsert error:", error);
+      console.error("health-sync (HAE) rpc error:", error);
       return Response.json({ error: "Schreiben fehlgeschlagen." }, { status: 500 });
     }
     return Response.json({
