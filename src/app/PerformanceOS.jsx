@@ -532,21 +532,168 @@ function NutSettings({ set, onSave, close }) {
     </form>
   </Sheet>);
 }
+const UNIT_LABEL = { g: "g", ml: "ml", piece: "Stück", Portion: "Portion" };
+const favAsFood = (f) => ({ name: f.n, brand: "", base_unit: "Portion", per: 1, kcal: f.k, protein: f.p, fat: f.f, carbs: f.c });
+const blankForm = { name: "", brand: "", barcode: "", base_unit: "g", per: 100, kcal: "", protein: "", fat: "", carbs: "" };
+
+function BarcodeScanner({ onDetected, onClose }) {
+  const videoRef = useRef(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    let controls = null; let active = true;
+    (async () => {
+      try {
+        const { BrowserMultiFormatReader } = await import("@zxing/browser");
+        const reader = new BrowserMultiFormatReader();
+        controls = await reader.decodeFromConstraints(
+          { video: { facingMode: { ideal: "environment" } } },
+          videoRef.current,
+          (result) => { if (result && active) { active = false; try { controls && controls.stop(); } catch (e) {} onDetected(result.getText()); } },
+        );
+      } catch (e) { setErr("Kamera nicht verfügbar — erlaube den Zugriff, oder gib den Barcode manuell ein."); }
+    })();
+    return () => { active = false; try { controls && controls.stop(); } catch (e) {} };
+  }, []);
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", background: "#000", aspectRatio: "4/3" }}>
+        <video ref={videoRef} playsInline muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        <div style={{ position: "absolute", left: "10%", right: "10%", top: "44%", height: 2, background: H.down, boxShadow: "0 0 12px " + H.down }} />
+      </div>
+      {err && <div style={{ fontSize: 12.5, color: H.down, marginTop: 8 }}>{err}</div>}
+      <div style={{ fontSize: 12, color: H.sub, textAlign: "center", marginTop: 8 }}>Barcode ins Bild halten …</div>
+      <button onClick={onClose} style={{ width: "100%", marginTop: 10, padding: 12, borderRadius: 12, border: "1px solid " + H.line, background: "transparent", color: H.sub, fontWeight: 650, fontSize: 13.5, cursor: "pointer" }}>Abbrechen</button>
+    </div>
+  );
+}
+
 function AddFood({ mealLabel, onAdd, close }) {
-  const [text, setText] = useState(""); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
-  const est = async () => { if (!text.trim()) return; setBusy(true); setErr(""); try { onAdd(await estimateFood(text.trim())); } catch (e) { setErr("Schätzung fehlgeschlagen — nochmal versuchen oder Favorit wählen."); setBusy(false); } };
-  return (<Sheet close={close} title={"Hinzufügen · " + mealLabel}>
-    <Label style={{ color: H.blue, marginBottom: 8 }}><Sparkles size={12} style={{ verticalAlign: "-2px" }} /> Mit KI schätzen</Label>
-    <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
-      <input value={text} onChange={(e) => setText(e.target.value)} placeholder='z.B. „Döner mit allem"' className="fld" style={{ ...sheetInput, flex: 1 }} onKeyDown={(e) => { if (e.key === "Enter") est(); }} />
-      <button onClick={est} disabled={busy || !text.trim()} style={{ flexShrink: 0, padding: "0 16px", borderRadius: 11, border: "none", background: busy || !text.trim() ? H.card : H.blue, color: busy || !text.trim() ? H.faint : "#fff", fontWeight: 750, fontSize: 14, cursor: busy ? "default" : "pointer" }}>{busy ? "…" : "Schätzen"}</button>
-    </div>
-    {busy && <div style={{ fontSize: 12.5, color: H.sub, marginBottom: 8 }}>Schätze Nährwerte …</div>}
-    {err && <div style={{ fontSize: 12.5, color: H.down, marginBottom: 8 }}>{err}</div>}
-    <Label style={{ margin: "14px 0 8px" }}>Favoriten</Label>
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, maxHeight: 240, overflowY: "auto" }} className="scroll">
-      {FAVS.map((f) => <button key={f.n} onClick={() => onAdd(f)} style={{ background: H.bg2, border: "1px solid " + H.line, borderRadius: 11, padding: "10px 12px", cursor: "pointer", textAlign: "left" }}><div style={{ fontSize: 13, fontWeight: 600 }}>{f.n}</div><div style={{ fontSize: 11, color: H.sub, fontVariantNumeric: "tabular-nums" }}>{f.p}P · {f.f}F · {f.c}K · {f.k}kcal</div></button>)}
-    </div>
+  const [mode, setMode] = useState("search"); // search | portion | create | scan
+  const [q, setQ] = useState("");
+  const [library, setLibrary] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [amount, setAmount] = useState("");
+  const [form, setForm] = useState(blankForm);
+  const [text, setText] = useState(""); const [aiBusy, setAiBusy] = useState(false); const [err, setErr] = useState("");
+  const [scanBusy, setScanBusy] = useState(false);
+
+  useEffect(() => { (async () => {
+    try { const { data: { user } } = await supabase.auth.getUser(); if (!user) return;
+      const { data } = await supabase.from("foods").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(300);
+      setLibrary(data || []);
+    } catch (e) {}
+  })(); }, []);
+
+  const results = (() => {
+    const all = [...library, ...FAVS.map(favAsFood)];
+    const s = q.trim().toLowerCase();
+    return (s ? all.filter((f) => (f.name + " " + (f.brand || "")).toLowerCase().includes(s)) : all).slice(0, 60);
+  })();
+
+  const pick = (food) => { setSelected(food); setAmount(String(food.per || (food.base_unit === "g" || food.base_unit === "ml" ? 100 : 1))); setMode("portion"); };
+
+  const factor = selected ? (Number(amount) || 0) / (Number(selected.per) || 1) : 0;
+  const sc = (v) => Math.round((Number(v) || 0) * factor);
+
+  const addPortion = () => {
+    if (!selected) return;
+    onAdd({ n: selected.name + " · " + amount + " " + (UNIT_LABEL[selected.base_unit] || selected.base_unit), p: sc(selected.protein), f: sc(selected.fat), c: sc(selected.carbs), k: sc(selected.kcal) });
+    close();
+  };
+
+  const saveAndPick = async () => {
+    const f = { name: form.name.trim(), brand: form.brand.trim() || null, barcode: form.barcode || null, base_unit: form.base_unit, per: Number(form.per) || 100, kcal: Number(form.kcal) || 0, protein: Number(form.protein) || 0, fat: Number(form.fat) || 0, carbs: Number(form.carbs) || 0 };
+    if (!f.name) return;
+    try { const { data: { user } } = await supabase.auth.getUser();
+      const { data } = await supabase.from("foods").insert({ ...f, user_id: user.id }).select().single();
+      const saved = data || f; setLibrary((l) => [saved, ...l]); pick(saved);
+    } catch (e) { pick(f); }
+  };
+
+  const onDetected = async (code) => {
+    setMode("create"); setScanBusy(true); setErr("");
+    try {
+      const r = await fetch("/api/food-lookup?barcode=" + encodeURIComponent(code)).then((x) => x.json());
+      if (r.found) setForm({ name: r.name || "", brand: r.brand || "", barcode: code, base_unit: "g", per: 100, kcal: r.kcal ?? "", protein: r.protein ?? "", fat: r.fat ?? "", carbs: r.carbs ?? "" });
+      else { setForm({ ...blankForm, barcode: code }); setErr("Produkt nicht in der Datenbank — bitte Werte manuell eintragen."); }
+    } catch (e) { setForm({ ...blankForm, barcode: code }); setErr("Lookup fehlgeschlagen — Werte manuell eintragen."); }
+    setScanBusy(false);
+  };
+
+  const est = async () => { if (!text.trim()) return; setAiBusy(true); setErr(""); try { onAdd(await estimateFood(text.trim())); close(); } catch (e) { setErr("KI-Schätzung fehlgeschlagen."); setAiBusy(false); } };
+
+  const uf = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const title = mode === "portion" ? "Menge wählen" : mode === "create" ? "Lebensmittel anlegen" : mode === "scan" ? "Barcode scannen" : "Hinzufügen · " + mealLabel;
+
+  return (<Sheet close={close} title={title}>
+    {mode === "search" && <>
+      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        <button onClick={() => setMode("scan")} style={{ flex: 1, padding: 12, borderRadius: 12, border: "1px solid " + H.blue, background: H.blueSoft, color: H.blue, fontWeight: 750, fontSize: 13.5, cursor: "pointer" }}>📷 Barcode scannen</button>
+        <button onClick={() => { setForm(blankForm); setMode("create"); }} style={{ flex: 1, padding: 12, borderRadius: 12, border: "1px solid " + H.line, background: H.bg2, color: H.text, fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>+ Neues Lebensmittel</button>
+      </div>
+      <div style={{ position: "relative", marginBottom: 10 }}><Search size={15} color={H.faint} style={{ position: "absolute", left: 12, top: 12 }} />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Lebensmittel suchen" className="fld" style={{ ...sheetInput, paddingLeft: 34 }} /></div>
+      <div style={{ maxHeight: 300, overflowY: "auto" }} className="scroll">
+        {results.map((f, i) => (
+          <button key={(f.id || f.name) + i} onClick={() => pick(f)} style={{ all: "unset", cursor: "pointer", display: "block", width: "100%", boxSizing: "border-box", background: H.bg2, borderRadius: 11, padding: "11px 13px", marginBottom: 7 }}>
+            <div style={{ fontSize: 14, fontWeight: 650 }}>{f.name}{f.brand ? <span style={{ color: H.faint, fontWeight: 400 }}> · {f.brand}</span> : null}</div>
+            <div style={{ fontSize: 11.5, color: H.sub, fontVariantNumeric: "tabular-nums", marginTop: 1 }}>{f.kcal} kcal · {f.protein}P · {f.fat}F · {f.carbs}K <span style={{ color: H.faint }}>/ {f.per} {UNIT_LABEL[f.base_unit] || f.base_unit}</span></div>
+          </button>
+        ))}
+        {results.length === 0 && <div style={{ fontSize: 13, color: H.faint, textAlign: "center", padding: "16px 0" }}>Nichts gefunden — leg es als neues Lebensmittel an oder scanne den Barcode.</div>}
+      </div>
+      <Label style={{ margin: "16px 0 8px", color: H.blue }}><Sparkles size={12} style={{ verticalAlign: "-2px" }} /> Oder mit KI schätzen</Label>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input value={text} onChange={(e) => setText(e.target.value)} placeholder='z.B. „Döner mit allem"' className="fld" style={{ ...sheetInput, flex: 1 }} onKeyDown={(e) => { if (e.key === "Enter") est(); }} />
+        <button onClick={est} disabled={aiBusy || !text.trim()} style={{ flexShrink: 0, padding: "0 16px", borderRadius: 11, border: "none", background: aiBusy || !text.trim() ? H.card : H.blue, color: aiBusy || !text.trim() ? H.faint : "#fff", fontWeight: 750, fontSize: 14, cursor: aiBusy ? "default" : "pointer" }}>{aiBusy ? "…" : "Schätzen"}</button>
+      </div>
+      {err && <div style={{ fontSize: 12.5, color: H.down, marginTop: 8 }}>{err}</div>}
+    </>}
+
+    {mode === "scan" && <>
+      <BarcodeScanner onDetected={onDetected} onClose={() => setMode("search")} />
+      <Field label="Barcode manuell eingeben"><input value={form.barcode} onChange={(e) => uf("barcode", e.target.value)} inputMode="numeric" placeholder="z.B. 4008400202037" className="fld" style={sheetInput} /></Field>
+      <button disabled={!form.barcode} onClick={() => onDetected(form.barcode)} style={{ width: "100%", padding: 13, borderRadius: 12, border: "none", background: form.barcode ? H.blue : H.card, color: form.barcode ? "#fff" : H.faint, fontWeight: 750, fontSize: 14.5, cursor: form.barcode ? "pointer" : "default" }}>Nachschlagen</button>
+    </>}
+
+    {mode === "create" && <>
+      {scanBusy && <div style={{ fontSize: 13, color: H.blue, marginBottom: 10 }}>Schlage Barcode nach …</div>}
+      <Field label="Name"><input value={form.name} onChange={(e) => uf("name", e.target.value)} placeholder="z.B. Magerquark" className="fld" style={sheetInput} /></Field>
+      <Field label="Marke (optional)"><input value={form.brand} onChange={(e) => uf("brand", e.target.value)} className="fld" style={sheetInput} /></Field>
+      <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ flex: 1 }}><Field label="Werte pro"><input value={form.per} onChange={(e) => uf("per", e.target.value)} inputMode="numeric" className="fld" style={sheetInput} /></Field></div>
+        <div style={{ flex: 1 }}><Field label="Einheit">
+          <div style={{ display: "flex", gap: 4, background: H.bg2, padding: 4, borderRadius: 11 }}>
+            {["g", "ml", "piece"].map((u) => <button key={u} onClick={() => uf("base_unit", u)} style={{ flex: 1, border: "none", cursor: "pointer", padding: "8px 0", borderRadius: 8, fontSize: 13, fontWeight: 700, background: form.base_unit === u ? H.card : "transparent", color: form.base_unit === u ? H.text : H.sub }}>{UNIT_LABEL[u]}</button>)}
+          </div>
+        </Field></div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <Field label="Kalorien (kcal)"><input value={form.kcal} onChange={(e) => uf("kcal", e.target.value)} inputMode="decimal" className="fld" style={sheetInput} /></Field>
+        <Field label="Protein (g)"><input value={form.protein} onChange={(e) => uf("protein", e.target.value)} inputMode="decimal" className="fld" style={sheetInput} /></Field>
+        <Field label="Fett (g)"><input value={form.fat} onChange={(e) => uf("fat", e.target.value)} inputMode="decimal" className="fld" style={sheetInput} /></Field>
+        <Field label="Kohlenhydrate (g)"><input value={form.carbs} onChange={(e) => uf("carbs", e.target.value)} inputMode="decimal" className="fld" style={sheetInput} /></Field>
+      </div>
+      {err && <div style={{ fontSize: 12.5, color: H.amber, margin: "2px 0 8px" }}>{err}</div>}
+      <button disabled={!form.name.trim()} onClick={saveAndPick} style={{ width: "100%", marginTop: 6, padding: 14, borderRadius: 13, border: "none", background: form.name.trim() ? H.blue : H.card, color: form.name.trim() ? "#fff" : H.faint, fontWeight: 750, fontSize: 15, cursor: form.name.trim() ? "pointer" : "default" }}>Speichern & Menge wählen</button>
+      <button onClick={() => setMode("search")} style={{ width: "100%", marginTop: 8, padding: 10, borderRadius: 12, border: "none", background: "transparent", color: H.sub, fontSize: 13, cursor: "pointer" }}>‹ Zurück</button>
+    </>}
+
+    {mode === "portion" && selected && <>
+      <div style={{ fontSize: 16, fontWeight: 720, marginBottom: 2 }}>{selected.name}</div>
+      {selected.brand && <div style={{ fontSize: 12.5, color: H.faint, marginBottom: 12 }}>{selected.brand}</div>}
+      <Field label={"Menge in " + (UNIT_LABEL[selected.base_unit] || selected.base_unit)}>
+        <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" autoFocus className="fld" style={{ ...sheetInput, fontSize: 20, fontWeight: 750, textAlign: "center" }} />
+      </Field>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <Stat label="kcal" value={sc(selected.kcal)} accent />
+        <Stat label="Protein" value={sc(selected.protein) + " g"} />
+        <Stat label="Fett" value={sc(selected.fat) + " g"} />
+        <Stat label="KH" value={sc(selected.carbs) + " g"} />
+      </div>
+      <button onClick={addPortion} style={{ width: "100%", padding: 14, borderRadius: 13, border: "none", background: H.blue, color: "#fff", fontWeight: 750, fontSize: 15, cursor: "pointer" }}>Zu {mealLabel} hinzufügen</button>
+      <button onClick={() => setMode("search")} style={{ width: "100%", marginTop: 8, padding: 10, borderRadius: 12, border: "none", background: "transparent", color: H.sub, fontSize: 13, cursor: "pointer" }}>‹ Zurück</button>
+    </>}
   </Sheet>);
 }
 function Macro({ label, v, t, color }) { const pct = Math.min(100, (v / t) * 100); return (<div style={{ marginBottom: 11 }}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}><span style={{ fontSize: 13, fontWeight: 600 }}>{label}</span><span style={{ fontSize: 12, color: H.sub, fontVariantNumeric: "tabular-nums" }}>{v}<span style={{ color: H.faint }}> / {t} g</span></span></div><Bar pct={pct} color={color} /></div>); }
