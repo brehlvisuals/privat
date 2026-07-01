@@ -106,11 +106,12 @@ export async function POST(request: Request) {
   if (metrics) {
     // Pro Tag pro Metrik { sum, count } sammeln.
     const byDay: Record<string, Record<string, Array<{ src: string; val: number }>>> = {};
-    const aeRaw: Record<string, unknown[]> = {}; // DEBUG: rohe active_energy-Punkte
+    const unitsOf: Record<string, string> = {};
     for (const m of metrics as Array<Record<string, unknown>>) {
       const name = typeof m.name === "string" ? m.name : null;
       const points = Array.isArray(m.data) ? m.data : null;
       if (!name || !points) continue;
+      unitsOf[name] = typeof m.units === "string" ? m.units : "";
       for (const p of points as Array<Record<string, unknown>>) {
         const day = dayOf(p.date);
         const val = pointValue(name, p);
@@ -118,7 +119,6 @@ export async function POST(request: Request) {
         const src = typeof p.source === "string" ? p.source : "?";
         (byDay[day] ??= {});
         (byDay[day][name] ??= []).push({ src, val });
-        if (name === "active_energy") (aeRaw[day] ??= []).push(p);
       }
     }
 
@@ -144,11 +144,13 @@ export async function POST(request: Request) {
         } else {
           value = arr.reduce((s, x) => s + x.val, 0) / arr.length;
         }
+        // Energie in kJ → kcal (Coros exportiert Aktiv-Energie in Kilojoule).
+        if (/kj/i.test(unitsOf[name] || "")) value = value / 4.184;
         metricsObj[name] = Math.round(value * 1000) / 1000;
         const map = COLUMN_MAP[name];
         if (map) rec[map.col] = map.int ? Math.round(value) : Math.round(value * 100) / 100;
       }
-      if (aeRaw[day]) metricsObj["_ae_raw"] = aeRaw[day]; // DEBUG
+      metricsObj["_units"] = unitsOf;
       return rec;
     });
 
