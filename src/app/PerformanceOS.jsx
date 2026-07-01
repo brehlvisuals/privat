@@ -190,7 +190,7 @@ export default function App() {
             <Sparkles size={24} color="#fff" />
           </button>
         )}
-        {chatOpen && <Coach msgs={msgs} setMsgs={setMsgs} close={() => setChatOpen(false)} data={data} />}
+        {chatOpen && <Coach msgs={msgs} setMsgs={setMsgs} close={() => setChatOpen(false)} data={data} commit={commit} />}
 
         <Nav tab={tab} setTab={setTab} active={!!active} />
       </div>
@@ -199,16 +199,55 @@ export default function App() {
 }
 
 /* ================= COACH CHAT ================= */
-function Coach({ msgs, setMsgs, close, data }) {
+const COACH_MEALS = { breakfast: "Frühstück", lunch: "Mittag", dinner: "Abend", snack: "Snack" };
+function displayOf(m) {
+  if (typeof m.content === "string") return m.content;
+  if (Array.isArray(m.content)) {
+    if (m.role === "user" && m.content.every((b) => b.type === "tool_result")) return null;
+    const txt = m.content.filter((b) => b.type === "text").map((b) => b.text).join("");
+    if (txt) return txt;
+    const tools = m.content.filter((b) => b.type === "tool_use");
+    if (tools.length) return "📝 Eingetragen: " + tools.map((b) => (b.input && b.input.name) || "Mahlzeit").join(", ");
+    return null;
+  }
+  return null;
+}
+
+function Coach({ msgs, setMsgs, close, data, commit }) {
   const [text, setText] = useState(""); const [busy, setBusy] = useState(false);
   const endRef = useRef(null);
   useEffect(() => { endRef.current && endRef.current.scrollIntoView({ behavior: "smooth" }); }, [msgs, busy]);
+
+  const applyLogs = (logs) => {
+    if (!logs.length) return;
+    let nutri = { ...data.nutrition };
+    for (const b of logs) {
+      const meal = COACH_MEALS[b.input.meal] ? b.input.meal : "snack";
+      const e = { n: String(b.input.name || "Mahlzeit"), k: Math.round(Number(b.input.kcal) || 0), p: Math.round(Number(b.input.protein) || 0), f: Math.round(Number(b.input.fat) || 0), c: Math.round(Number(b.input.carbs) || 0), ai: true };
+      const day = nutri[today] || emptyDay();
+      nutri = { ...nutri, [today]: { ...day, [meal]: [...(day[meal] || []), e] } };
+    }
+    commit({ ...data, nutrition: nutri });
+  };
+
   const send = async () => {
     const t = text.trim(); if (!t || busy) return;
-    const next = [...msgs, { role: "user", content: t }]; setMsgs(next); setText(""); setBusy(true);
+    let convo = [...msgs, { role: "user", content: t }]; setMsgs(convo); setText(""); setBusy(true);
     const sys = COACH_SYS + "\n\n## AKTUELLE DATEN\n" + buildCoachContext(data);
-    try { const reply = await callClaude(next.map((m) => ({ role: m.role, content: m.content })), sys); setMsgs([...next, { role: "assistant", content: reply }]); }
-    catch (e) { setMsgs([...next, { role: "assistant", content: "Hm, da ging was schief. Probier's nochmal." }]); }
+    try {
+      for (let iter = 0; iter < 4; iter++) {
+        const res = await fetch("/api/coach", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: convo.map((m) => ({ role: m.role, content: m.content })), system: sys, tools: true }) }).then((r) => r.json());
+        if (!res || !res.content) throw new Error("bad response");
+        convo = [...convo, { role: "assistant", content: res.content }]; setMsgs(convo);
+        if (res.stop_reason === "tool_use") {
+          applyLogs(res.content.filter((b) => b.type === "tool_use" && b.name === "log_meal"));
+          const results = res.content.filter((b) => b.type === "tool_use").map((b) => ({ type: "tool_result", tool_use_id: b.id, content: "Erfolgreich eingetragen." }));
+          convo = [...convo, { role: "user", content: results }]; setMsgs(convo);
+          continue;
+        }
+        break;
+      }
+    } catch (e) { setMsgs([...convo, { role: "assistant", content: "Hm, da ging was schief. Probier's nochmal." }]); }
     setBusy(false);
   };
   return (
@@ -219,13 +258,13 @@ function Coach({ msgs, setMsgs, close, data }) {
         <button onClick={close} style={{ all: "unset", cursor: "pointer", color: H.sub }}><X size={22} /></button>
       </div>
       <div className="scroll" style={{ flex: 1, overflowY: "auto", padding: 16 }}>
-        {msgs.map((m, i) => (
+        {msgs.map((m, i) => { const disp = displayOf(m); if (disp == null) return null; return (
           <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start", marginBottom: 10 }}>
             <div style={{ maxWidth: "82%", padding: "11px 14px", borderRadius: 16, fontSize: 14, lineHeight: 1.5, whiteSpace: "pre-wrap",
               background: m.role === "user" ? H.blue : H.card, color: m.role === "user" ? "#fff" : H.text, border: m.role === "user" ? "none" : "1px solid " + H.line,
-              borderBottomRightRadius: m.role === "user" ? 4 : 16, borderBottomLeftRadius: m.role === "user" ? 16 : 4 }}>{m.content}</div>
+              borderBottomRightRadius: m.role === "user" ? 4 : 16, borderBottomLeftRadius: m.role === "user" ? 16 : 4 }}>{disp}</div>
           </div>
-        ))}
+        ); })}
         {busy && <div style={{ fontSize: 13, color: H.sub, padding: "2px 4px" }}>Coach tippt …</div>}
         <div ref={endRef} />
       </div>
