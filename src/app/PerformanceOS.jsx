@@ -174,14 +174,14 @@ export default function App() {
   const [chatOpen, setChatOpen] = useState(false);
   const [msgs, setMsgs] = useState([{ role: "assistant", content: "Moin Felix! Frag mich was zu Training, Ernährung oder Recovery — oder schick mir, was du isst (z.B. Döner mit allem) für eine schnelle Schätzung." }]);
   useEffect(() => { load().then(setData); }, []);
-  if (!data) return <div style={{ background: H.bg, minHeight: 640 }} />;
+  if (!data) return <div style={{ background: H.bg, minHeight: "100dvh" }} />;
   const commit = (d) => { setData(d); persist(d); };
 
   return (
-    <div style={{ background: H.bg, minHeight: 640, fontFamily: "ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif", color: H.text }}>
+    <div style={{ background: H.bg, minHeight: "100dvh", fontFamily: "ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif", color: H.text }}>
       <Style />
-      <div style={{ maxWidth: 460, margin: "0 auto", minHeight: 640, position: "relative", display: "flex", flexDirection: "column" }}>
-        <div className="scroll" style={{ flex: 1, overflowY: "auto", padding: "0 0 90px" }}>
+      <div style={{ maxWidth: 460, margin: "0 auto", minHeight: "100dvh", position: "relative", display: "flex", flexDirection: "column" }}>
+        <div className="scroll" style={{ flex: 1, overflowY: "auto", padding: "env(safe-area-inset-top) 0 90px" }}>
           {tab === "home" && <Home data={data} />}
           {tab === "train" && <Training data={data} commit={commit} active={active} setActive={setActive} />}
           {tab === "food" && <Food data={data} commit={commit} />}
@@ -217,7 +217,7 @@ function Coach({ msgs, setMsgs, close }) {
   };
   return (
     <div style={{ position: "absolute", inset: 0, zIndex: 60, display: "flex", flexDirection: "column", background: H.bg }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 18px", borderBottom: "1px solid " + H.line }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "calc(16px + env(safe-area-inset-top)) 18px 16px", borderBottom: "1px solid " + H.line }}>
         <span style={{ width: 34, height: 34, borderRadius: 17, background: "linear-gradient(135deg,#4D86FF,#2E6BFF)", display: "grid", placeItems: "center" }}><Sparkles size={18} color="#fff" /></span>
         <div style={{ flex: 1 }}><div style={{ fontSize: 15.5, fontWeight: 750 }}>KI-Coach</div><div style={{ fontSize: 11.5, color: H.sub }}>kennt deinen Kontext</div></div>
         <button onClick={close} style={{ all: "unset", cursor: "pointer", color: H.sub }}><X size={22} /></button>
@@ -645,7 +645,7 @@ const navBtn = { all: "unset", cursor: "pointer", padding: "4px 10px", display: 
 const iconBtn = { all: "unset", cursor: "pointer", width: 38, height: 38, borderRadius: 11, background: H.card, border: "1px solid " + H.line, display: "grid", placeItems: "center" };
 function Nav({ tab, setTab, active }) {
   const items = [{ k: "home", l: "Heute", I: Flame }, { k: "train", l: "Training", I: Dumbbell }, { k: "food", l: "Ernährung", I: Utensils }, { k: "analyse", l: "Analyse", I: BarChart3 }];
-  return (<div style={{ position: "absolute", bottom: 0, left: 0, right: 0, display: "flex", background: "rgba(13,13,16,.92)", backdropFilter: "blur(10px)", borderTop: "1px solid " + H.line, padding: "8px 0 11px" }}>
+  return (<div style={{ position: "absolute", bottom: 0, left: 0, right: 0, display: "flex", background: "rgba(13,13,16,.92)", backdropFilter: "blur(10px)", borderTop: "1px solid " + H.line, padding: "8px 0 calc(11px + env(safe-area-inset-bottom))" }}>
     {items.map(({ k, l, I }) => { const on = tab === k; const dot = active && k === "train"; return (
       <button key={k} onClick={() => setTab(k)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: on ? H.blue : H.faint, position: "relative" }}>
         <I size={21} color={on ? H.blue : H.faint} />
