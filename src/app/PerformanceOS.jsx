@@ -544,9 +544,14 @@ function Food({ data, commit }) {
           <Macro label="Kohlenhydrate" v={sum.c} t={set.carbs} color={H.up} />
         </Card>
 
-        {MEALS.map(([k, label]) => { const items = day[k] || []; const mk = items.reduce((a, m) => a + m.k, 0); return (
+        {MEALS.map(([k, label]) => { const items = day[k] || []; const ms = items.reduce((a, m) => ({ p: a.p + m.p, f: a.f + m.f, c: a.c + m.c, k: a.k + m.k }), { p: 0, f: 0, c: 0, k: 0 }); return (
           <Card key={k} style={{ marginBottom: 11 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: items.length ? 8 : 0 }}><span style={{ fontSize: 15, fontWeight: 720 }}>{label}</span><span style={{ fontSize: 12, color: H.faint, fontVariantNumeric: "tabular-nums" }}>{mk} kcal</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: items.length ? 8 : 0 }}>
+              <span style={{ fontSize: 15, fontWeight: 720 }}>{label}</span>
+              <span style={{ fontSize: 12, color: H.faint, fontVariantNumeric: "tabular-nums", textAlign: "right" }}>
+                {items.length ? <span style={{ marginRight: 8 }}>{Math.round(ms.p)}P · {Math.round(ms.f)}F · {Math.round(ms.c)}K</span> : null}{Math.round(ms.k)} kcal
+              </span>
+            </div>
             {items.map((m, i) => (
               <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderTop: "1px solid " + H.line }}>
                 <div onClick={() => setEdit({ meal: k, idx: i })} style={{ flex: 1, cursor: "pointer" }}><span style={{ fontSize: 13.5 }}>{m.n}{m.ai && <Sparkles size={11} color={H.blue} style={{ marginLeft: 5 }} />}</span><div style={{ fontSize: 11, color: H.faint, fontVariantNumeric: "tabular-nums", marginTop: 1 }}>{m.p}P · {m.f}F · {m.c}K · {m.k} kcal</div></div>
