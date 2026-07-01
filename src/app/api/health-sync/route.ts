@@ -86,9 +86,10 @@ export async function POST(request: Request) {
     return Response.json({ error: "Ungültiger Body." }, { status: 400 });
   }
 
-  // Token aus Header oder Body (Health Auto Export sendet es im Header).
+  // Token aus Header, URL-Query (?token=...) oder Body — je nachdem was die App kann.
   const provided =
     request.headers.get("x-health-token") ||
+    new URL(request.url).searchParams.get("token") ||
     (typeof body.token === "string" ? body.token : undefined);
   if (provided !== token) {
     return Response.json({ error: "Nicht autorisiert." }, { status: 401 });
