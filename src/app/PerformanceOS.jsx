@@ -58,46 +58,14 @@ const PDISC = {
 const DKEYS = Object.keys(PDISC);
 
 /* ---------- seed + storage ---------- */
-const seed = () => {
-  const sq = (a, b, c) => [{ w: a, r: 5 }, { w: b, r: 4 }, { w: c, r: 4 }];
-  return {
-    settings: { bmr: 1950, protein: 180, fat: 70, carbs: 460 },
-    exercises: [
-      { id: "squat", name: "Kniebeuge", group: "Quads", gym: "McFit Köln-Süd" },
-      { id: "bench", name: "Bankdrücken", group: "Brust", gym: "McFit Köln-Süd" },
-      { id: "legpress", name: "Beinpresse", group: "Quads", gym: "McFit Köln-Süd" },
-      { id: "dead", name: "Kreuzheben", group: "Rücken", gym: "McFit Köln-Süd" },
-      { id: "pistol", name: "Pistol Squat", group: "Beine", gym: "Aachener Weiher (Calisthenics)", custom: true },
-    ],
-    workouts: [
-      { id: "w1", date: dstr(42), name: "Quads / Core", durationMin: 58, exercises: [{ exId: "squat", name: "Kniebeuge", gym: "McFit Köln-Süd", note: "lief leicht", sets: sq(90, 92.5, 92.5) }] },
-      { id: "w2", date: dstr(35), name: "Quads / Core", durationMin: 61, exercises: [{ exId: "squat", name: "Kniebeuge", gym: "McFit Köln-Süd", note: "", sets: sq(92.5, 95, 95) }] },
-      { id: "w3", date: dstr(28), name: "Quads / Core", durationMin: 64, exercises: [{ exId: "squat", name: "Kniebeuge", gym: "McFit Köln-Süd", note: "stark", sets: sq(95, 95, 97.5) }, { exId: "legpress", name: "Beinpresse", gym: "McFit Köln-Süd", note: "", sets: [{ w: 180, r: 10 }, { w: 180, r: 10 }] }] },
-      { id: "w4", date: dstr(21), name: "Quads / Core", durationMin: 52, exercises: [{ exId: "squat", name: "Kniebeuge", gym: "McFit Köln-Süd", note: "müde, schwer", sets: sq(90, 92.5, 90) }] },
-      { id: "w5", date: dstr(14), name: "Quads / Core", durationMin: 49, exercises: [{ exId: "squat", name: "Kniebeuge", gym: "McFit Köln-Süd", note: "kraftlos", sets: sq(90, 90, 87.5) }] },
-      { id: "w6", date: dstr(7), name: "Quads / Core", durationMin: 60, exercises: [{ exId: "squat", name: "Kniebeuge", gym: "McFit Köln-Süd", note: "wieder besser", sets: sq(92.5, 95, 95) }] },
-    ],
-    context: {
-      [dstr(42)]: { sleep: 7.6, protein: 182, stress: "niedrig", activity: 900 }, [dstr(35)]: { sleep: 7.2, protein: 180, stress: "niedrig", activity: 820 },
-      [dstr(28)]: { sleep: 7.8, protein: 188, stress: "niedrig", activity: 950 }, [dstr(21)]: { sleep: 6.0, protein: 158, stress: "hoch", activity: 700 },
-      [dstr(14)]: { sleep: 6.2, protein: 152, stress: "hoch", activity: 680 }, [dstr(7)]: { sleep: 7.4, protein: 178, stress: "mittel", activity: 880 },
-      [dstr(1)]: { sleep: 7.1, protein: 176, stress: "mittel", activity: 1120 }, [today]: { sleep: 7.3, protein: 176, stress: "mittel", activity: 850 },
-    },
-    nutrition: {
-      [today]: { breakfast: [{ n: "Haferflocken 80 g + Banane + Whey", p: 36, f: 8, c: 79, k: 530 }], lunch: [{ n: "Lachsfilet 150 g + Reis 200 g", p: 39, f: 22, c: 56, k: 600 }], dinner: [], snack: [] },
-      [dstr(1)]: { breakfast: [{ n: "Skyr 250 g + Beeren", p: 27, f: 1, c: 22, k: 200 }], lunch: [], dinner: [{ n: "Döner mit allem", p: 38, f: 26, c: 52, k: 640, ai: true }], snack: [] },
-    },
-    plan: {
-      0: [{ disc: "strength", detail: "Quads / Core" }, { disc: "run", detail: "Easy 8 km" }],
-      1: [{ disc: "bike", detail: "Intervalle 2×20 min" }, { disc: "swim", detail: "Technik 2,0 km" }],
-      2: [{ disc: "strength", detail: "Hams / Back" }, { disc: "mobility", detail: "20 min" }],
-      3: [{ disc: "swim", detail: "Schwelle 2,5 km" }],
-      4: [{ disc: "strength", detail: "Arms / Side Delts" }, { disc: "run", detail: "Tempo 6×1 km" }],
-      5: [{ disc: "bike", detail: "Long 90 km" }],
-      6: [{ disc: "run", detail: "Long 18 km" }, { disc: "mobility", detail: "20 min" }],
-    },
-  };
-};
+const seed = () => ({
+  settings: { bmr: 1950, protein: 180, fat: 70, carbs: 460 },
+  exercises: [],
+  workouts: [],
+  context: {},
+  nutrition: {},
+  plan: {},
+});
 let MEM = null;
 const supabase = createClient();
 function migrate(d) { const s = seed(); return { ...s, ...d, settings: { ...s.settings, ...(d.settings || {}) }, plan: d.plan || s.plan, context: { ...s.context, ...(d.context || {}) } }; }
@@ -180,8 +148,8 @@ export default function App() {
   return (
     <div style={{ background: H.bg, minHeight: "100dvh", fontFamily: "ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif", color: H.text }}>
       <Style />
-      <div style={{ maxWidth: 460, margin: "0 auto", height: "100dvh", overflow: "hidden", position: "relative", display: "flex", flexDirection: "column" }}>
-        <div className="scroll" style={{ flex: 1, overflowY: "auto", padding: "env(safe-area-inset-top) 0 90px" }}>
+      <div style={{ maxWidth: 460, margin: "0 auto", minHeight: "100dvh", position: "relative", display: "flex", flexDirection: "column" }}>
+        <div className="scroll" style={{ flex: 1, padding: "env(safe-area-inset-top) 0 calc(96px + env(safe-area-inset-bottom))" }}>
           {tab === "home" && <Home data={data} />}
           {tab === "train" && <Training data={data} commit={commit} active={active} setActive={setActive} />}
           {tab === "food" && <Food data={data} commit={commit} />}
@@ -190,7 +158,7 @@ export default function App() {
 
         {!chatOpen && (
           <button onClick={() => setChatOpen(true)} aria-label="KI-Coach"
-            style={{ position: "absolute", bottom: 80, right: 16, width: 54, height: 54, borderRadius: 27, border: "none", cursor: "pointer", zIndex: 40,
+            style={{ position: "fixed", bottom: "calc(84px + env(safe-area-inset-bottom))", right: "max(16px, calc(50% - 214px))", width: 54, height: 54, borderRadius: 27, border: "none", cursor: "pointer", zIndex: 45,
               background: "linear-gradient(135deg, #4D86FF, #2E6BFF)", boxShadow: "0 8px 22px -6px rgba(46,107,255,.6)", display: "grid", placeItems: "center" }}>
             <Sparkles size={24} color="#fff" />
           </button>
@@ -216,7 +184,7 @@ function Coach({ msgs, setMsgs, close }) {
     setBusy(false);
   };
   return (
-    <div style={{ position: "absolute", inset: 0, zIndex: 60, display: "flex", flexDirection: "column", background: H.bg }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", flexDirection: "column", background: H.bg }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "calc(16px + env(safe-area-inset-top)) 18px 16px", borderBottom: "1px solid " + H.line }}>
         <span style={{ width: 34, height: 34, borderRadius: 17, background: "linear-gradient(135deg,#4D86FF,#2E6BFF)", display: "grid", placeItems: "center" }}><Sparkles size={18} color="#fff" /></span>
         <div style={{ flex: 1 }}><div style={{ fontSize: 15.5, fontWeight: 750 }}>KI-Coach</div><div style={{ fontSize: 11.5, color: H.sub }}>kennt deinen Kontext</div></div>
@@ -792,7 +760,7 @@ const navBtn = { all: "unset", cursor: "pointer", padding: "4px 10px", display: 
 const iconBtn = { all: "unset", cursor: "pointer", width: 38, height: 38, borderRadius: 11, background: H.card, border: "1px solid " + H.line, display: "grid", placeItems: "center" };
 function Nav({ tab, setTab, active }) {
   const items = [{ k: "home", l: "Heute", I: Flame }, { k: "train", l: "Training", I: Dumbbell }, { k: "food", l: "Ernährung", I: Utensils }, { k: "analyse", l: "Analyse", I: BarChart3 }];
-  return (<div style={{ position: "absolute", bottom: 0, left: 0, right: 0, display: "flex", background: "rgba(13,13,16,.92)", backdropFilter: "blur(10px)", borderTop: "1px solid " + H.line, padding: "8px 0 calc(11px + env(safe-area-inset-bottom))" }}>
+  return (<div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 460, zIndex: 50, display: "flex", background: "rgba(13,13,16,.92)", backdropFilter: "blur(10px)", borderTop: "1px solid " + H.line, padding: "8px 0 calc(8px + env(safe-area-inset-bottom))" }}>
     {items.map(({ k, l, I }) => { const on = tab === k; const dot = active && k === "train"; return (
       <button key={k} onClick={() => setTab(k)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: on ? H.blue : H.faint, position: "relative" }}>
         <I size={21} color={on ? H.blue : H.faint} />
