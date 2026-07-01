@@ -67,6 +67,7 @@ const seed = () => ({
   plan: {},
 });
 let MEM = null;
+let userId = null;
 const supabase = createClient();
 function migrate(d) { const s = seed(); return { ...s, ...d, settings: { ...s.settings, ...(d.settings || {}) }, plan: d.plan || s.plan, context: { ...s.context, ...(d.context || {}) } }; }
 
@@ -92,6 +93,7 @@ async function load() {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return s;
+    userId = user.id;
     const { data: row } = await supabase.from("app_state").select("data").eq("user_id", user.id).maybeSingle();
     let d;
     if (row && row.data && Object.keys(row.data).length) {
@@ -108,16 +110,22 @@ async function load() {
 }
 
 let saveTimer = null;
+function writeState() {
+  if (!userId || !MEM) return;
+  try { supabase.from("app_state").upsert({ user_id: userId, data: MEM, updated_at: new Date().toISOString() }); } catch (e) {}
+}
 async function persist(d) {
   MEM = d;
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      supabase.from("app_state").upsert({ user_id: user.id, data: d, updated_at: new Date().toISOString() });
-    }, 600);
-  } catch (e) {}
+  if (!userId) { try { const { data: { user } } = await supabase.auth.getUser(); userId = user ? user.id : null; } catch (e) {} }
+  if (!userId) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(writeState, 400);
+}
+// Beim Verlassen/Backgrounden der App sofort speichern (sonst geht der Debounce-Write verloren).
+function flushSave() { clearTimeout(saveTimer); writeState(); }
+if (typeof window !== "undefined") {
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushSave(); });
+  window.addEventListener("pagehide", flushSave);
 }
 
 /* ---------- AI ---------- */

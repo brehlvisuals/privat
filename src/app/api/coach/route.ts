@@ -78,11 +78,14 @@ export async function POST(request: Request) {
 
     // Normalisierte Blöcke zurückgeben (text + tool_use), damit der Client
     // den Tool-Loop fahren kann.
-    const content = resp.content.map((b) => {
-      if (b.type === "text") return { type: "text", text: b.text };
-      if (b.type === "tool_use") return { type: "tool_use", id: b.id, name: b.name, input: b.input };
-      return { type: b.type };
-    });
+    const content = resp.content
+      .map((b) => {
+        if (b.type === "text") return { type: "text", text: b.text };
+        if (b.type === "tool_use") return { type: "tool_use", id: b.id, name: b.name, input: b.input };
+        return { type: b.type };
+      })
+      // Leere Text-Blöcke entfernen — sonst lehnt die API den Folge-Request (Tool-Loop) ab.
+      .filter((b) => !(b.type === "text" && (!("text" in b) || !String(b.text).trim())));
     const text = resp.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")
       .map((b) => b.text)
