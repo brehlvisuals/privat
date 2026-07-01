@@ -132,7 +132,34 @@ async function estimateFood(text) {
   const o = JSON.parse(out.replace(/```json|```/g, "").trim());
   return { n: o.n, p: Math.round(o.p), f: Math.round(o.f), c: Math.round(o.c), k: Math.round(o.k), ai: true };
 }
-const COACH_SYS = "Du bist der KI-Coach in Felix' privatem Performance OS. Felix ist pescetarischer Ironman-Triathlet, 26, 186 cm, 83 kg, Grundumsatz ~1950 kcal, Protein-Ziel ~180 g/Tag. Er trainiert Schwimmen, Rad, Laufen, Kraft, Calisthenics. Antworte kurz, konkret und auf Deutsch in der Du-Form. Bei Essen kannst du Kalorien und Makros schätzen. Du bist kein Ersatz für Arzt oder Coach bei medizinischen Fragen.";
+const COACH_SYS = "Du bist der KI-Coach in Felix' privatem Performance OS. Felix ist pescetarischer Ironman-Triathlet, 26, 186 cm, 83 kg. Er trainiert Schwimmen, Rad, Laufen, Kraft, Calisthenics. Du hast Zugriff auf seine aktuellen App-Daten (siehe Abschnitt AKTUELLE DATEN) — nutze sie und antworte konkret und datenbasiert. Erfinde keine Werte; wenn etwas fehlt (z.B. Aktivität noch nicht von Coros synchronisiert), sag das ehrlich. Sag NIEMALS, dass du kein Tracking-System hast oder eine andere App nötig wäre — die geloggten Mahlzeiten, Trainings und Health-Werte stehen dir unten zur Verfügung. Antworte kurz, konkret und auf Deutsch in der Du-Form. Kein Ersatz für Arzt/Coach bei medizinischen Fragen.";
+
+// Baut aus dem echten App-Zustand einen kompakten Live-Kontext für den Coach.
+function buildCoachContext(data) {
+  const s = data.settings; const ctx = data.context[today] || {}; const nut = data.nutrition[today] || emptyDay();
+  const eaten = [].concat(...MEALS.map(([k]) => nut[k] || [])).reduce((a, m) => ({ p: a.p + m.p, f: a.f + m.f, c: a.c + m.c, k: a.k + m.k }), { p: 0, f: 0, c: 0, k: 0 });
+  const meals = MEALS.map(([k, label]) => { const it = nut[k] || []; return it.length ? label + ": " + it.map((m) => m.n + " (" + m.k + " kcal, " + m.p + "g P)").join(", ") : null; }).filter(Boolean);
+  const act = typeof ctx.activity === "number" ? ctx.activity : null;
+  const verbrauch = s.bmr + (act || 0);
+  const plan = (data.plan[todayIdx] || []).map((x) => PDISC[x.disc].l + " " + x.detail).join(", ") || "Ruhetag";
+  const recentW = [...(data.workouts || [])].slice(-3).reverse().map((w) => fmtShort(w.date) + " " + w.name).join("; ") || "keine geloggt";
+  const days7 = Array.from({ length: 7 }, (_, i) => dstr(i));
+  const acts7 = days7.map((d) => (data.context[d] || {}).activity).filter((v) => typeof v === "number");
+  const w7 = (data.workouts || []).filter((w) => days7.includes(w.date)).length;
+  const L = [];
+  L.push("Datum: " + new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" }));
+  L.push("Ziele: Grundumsatz " + s.bmr + " kcal, Protein " + s.protein + " g, Fett " + s.fat + " g, Kohlenhydrate " + s.carbs + " g.");
+  L.push("Heute gegessen: " + eaten.k + " kcal (" + eaten.p + "g Protein, " + eaten.f + "g Fett, " + eaten.c + "g KH).");
+  L.push("Mahlzeiten heute: " + (meals.length ? meals.join(" | ") : "noch nichts geloggt"));
+  L.push("Aktivitätsenergie heute (Coros): " + (act == null ? "noch nicht synchronisiert" : act + " kcal") + ". Gesamtverbrauch: " + verbrauch + " kcal. Bilanz: " + (eaten.k - verbrauch) + " kcal.");
+  L.push("Noch offen: " + Math.max(0, s.protein - eaten.p) + " g Protein, " + (verbrauch - eaten.k) + " kcal bis zum Verbrauch.");
+  if (ctx.sleep != null) L.push("Schlaf letzte Nacht: " + ctx.sleep + " h.");
+  if (ctx.rhf != null) L.push("Ruhepuls: " + ctx.rhf + " bpm.");
+  if (ctx.weight != null) L.push("Gewicht: " + ctx.weight + " kg.");
+  L.push("Plan heute: " + plan + ".");
+  L.push("Letzte Workouts: " + recentW + ". Letzte 7 Tage: " + w7 + " Workouts, Aktiv-Energie-Summe " + (acts7.reduce((a, b) => a + b, 0) || 0) + " kcal.");
+  return L.join("\n");
+}
 
 /* ================= APP ================= */
 export default function App() {
@@ -163,7 +190,7 @@ export default function App() {
             <Sparkles size={24} color="#fff" />
           </button>
         )}
-        {chatOpen && <Coach msgs={msgs} setMsgs={setMsgs} close={() => setChatOpen(false)} />}
+        {chatOpen && <Coach msgs={msgs} setMsgs={setMsgs} close={() => setChatOpen(false)} data={data} />}
 
         <Nav tab={tab} setTab={setTab} active={!!active} />
       </div>
@@ -172,14 +199,15 @@ export default function App() {
 }
 
 /* ================= COACH CHAT ================= */
-function Coach({ msgs, setMsgs, close }) {
+function Coach({ msgs, setMsgs, close, data }) {
   const [text, setText] = useState(""); const [busy, setBusy] = useState(false);
   const endRef = useRef(null);
   useEffect(() => { endRef.current && endRef.current.scrollIntoView({ behavior: "smooth" }); }, [msgs, busy]);
   const send = async () => {
     const t = text.trim(); if (!t || busy) return;
     const next = [...msgs, { role: "user", content: t }]; setMsgs(next); setText(""); setBusy(true);
-    try { const reply = await callClaude(next.map((m) => ({ role: m.role, content: m.content })), COACH_SYS); setMsgs([...next, { role: "assistant", content: reply }]); }
+    const sys = COACH_SYS + "\n\n## AKTUELLE DATEN\n" + buildCoachContext(data);
+    try { const reply = await callClaude(next.map((m) => ({ role: m.role, content: m.content })), sys); setMsgs([...next, { role: "assistant", content: reply }]); }
     catch (e) { setMsgs([...next, { role: "assistant", content: "Hm, da ging was schief. Probier's nochmal." }]); }
     setBusy(false);
   };
