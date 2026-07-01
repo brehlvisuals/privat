@@ -105,7 +105,7 @@ export async function POST(request: Request) {
 
   if (metrics) {
     // Pro Tag pro Metrik { sum, count } sammeln.
-    const byDay: Record<string, Record<string, { sum: number; count: number }>> = {};
+    const byDay: Record<string, Record<string, Array<{ src: string; val: number }>>> = {};
     const aeRaw: Record<string, unknown[]> = {}; // DEBUG: rohe active_energy-Punkte
     for (const m of metrics as Array<Record<string, unknown>>) {
       const name = typeof m.name === "string" ? m.name : null;
@@ -115,10 +115,9 @@ export async function POST(request: Request) {
         const day = dayOf(p.date);
         const val = pointValue(name, p);
         if (day === null || val === null) continue;
+        const src = typeof p.source === "string" ? p.source : "?";
         (byDay[day] ??= {});
-        const acc = (byDay[day][name] ??= { sum: 0, count: 0 });
-        acc.sum += val;
-        acc.count += 1;
+        (byDay[day][name] ??= []).push({ src, val });
         if (name === "active_energy") (aeRaw[day] ??= []).push(p);
       }
     }
@@ -134,8 +133,17 @@ export async function POST(request: Request) {
     const records = days.map((day) => {
       const metricsObj: Record<string, unknown> = {};
       const rec: Record<string, unknown> = { date: day, metrics: metricsObj };
-      for (const [name, { sum, count }] of Object.entries(byDay[day])) {
-        const value = CUMULATIVE.has(name) ? sum : sum / count;
+      for (const [name, arr] of Object.entries(byDay[day])) {
+        let value: number;
+        if (CUMULATIVE.has(name)) {
+          // Dedup: mehrere Quellen NICHT aufsummieren — pro Quelle summieren,
+          // dann die größte Quelle nehmen (= Apples deduplizierter Tageswert).
+          const bySrc: Record<string, number> = {};
+          for (const { src, val } of arr) bySrc[src] = (bySrc[src] || 0) + val;
+          value = Math.max(...Object.values(bySrc));
+        } else {
+          value = arr.reduce((s, x) => s + x.val, 0) / arr.length;
+        }
         metricsObj[name] = Math.round(value * 1000) / 1000;
         const map = COLUMN_MAP[name];
         if (map) rec[map.col] = map.int ? Math.round(value) : Math.round(value * 100) / 100;
