@@ -153,7 +153,7 @@ export default function App() {
           {tab === "home" && <Home data={data} />}
           {tab === "train" && <Training data={data} commit={commit} active={active} setActive={setActive} />}
           {tab === "food" && <Food data={data} commit={commit} />}
-          {tab === "analyse" && <Analyse />}
+          {tab === "analyse" && <Analyse data={data} />}
         </div>
 
         {!chatOpen && (
@@ -668,55 +668,82 @@ function Macro({ label, v, t, color }) { const pct = Math.min(100, (v / t) * 100
 
 /* ================= HOME ================= */
 function Home({ data }) {
-  const set = data.settings; const nut = data.nutrition[today] || emptyDay();
+  const set = data.settings; const ctx = data.context[today] || {}; const nut = data.nutrition[today] || emptyDay();
   const eaten = [].concat(...MEALS.map(([k]) => nut[k] || [])).reduce((a, m) => ({ p: a.p + m.p, k: a.k + m.k }), { p: 0, k: 0 });
-  const act = (data.context[today] && data.context[today].activity) || 0; const verbrauch = set.bmr + act;
+  const act = typeof ctx.activity === "number" ? ctx.activity : null;
+  const verbrauch = set.bmr + (act || 0);
   const pLeft = Math.max(0, set.protein - eaten.p); const kLeft = verbrauch - eaten.k;
-  const sq = data.workouts.filter((w) => w.exercises.some((e) => e.exId === "squat")).slice(-1)[0];
-  const sqTop = sq ? bestSet(sq.exercises.find((e) => e.exId === "squat").sets) : null;
   const todayPlan = (data.plan[todayIdx] || []).map((s) => PDISC[s.disc].l + " " + s.detail).join(" · ") || "Ruhetag";
+  const dash = (v, suf = "") => (v == null || v === "" ? "—" : v + suf);
 
-  const train = [
-    { Icon: Dumbbell, c: H.blue, t: sqTop ? "Kniebeuge: letzte Top-Session " + sqTop.w + "×" + sqTop.r + " — heute " + sqTop.w + "×" + (sqTop.r + 1) + " anpeilen, dann nächste Woche +2,5 kg." : "Kniebeuge: heute auf sauberen Tiefgang achten." },
-    { Icon: Zap, c: H.up, t: "Readiness 78 — Körper verträgt heute Intensität. Plan: " + todayPlan + "." },
-    { Icon: Activity, c: H.amber, t: "Lauf-Load +22 % zur Vorwoche — Tempo-Einheit ja, aber den Easy-Run wirklich locker (Zone 2)." },
-    { Icon: AlertTriangle, c: H.violet, t: "Schwimmen diese Woche erst 1×/2 erledigt — Donnerstag fix einplanen, sonst kippt das Wochenvolumen." },
-  ];
-  const food = [
-    { Icon: Utensils, c: H.blue, t: pLeft > 0 ? "Noch " + pLeft + " g Protein bis zum Ziel — z.B. Lachs + 2× Skyr deckt das locker ab." : "Protein-Ziel heute erreicht — sauber." },
-    { Icon: Flame, c: kLeft >= 0 ? H.up : H.amber, t: kLeft >= 0 ? "Noch " + kLeft + " kcal bis zum Verbrauch (" + verbrauch + "). Bei Long-Day morgen ruhig leichten Überschuss fahren." : "Bereits " + Math.abs(kLeft) + " kcal über Verbrauch — passt an einem harten Tag, sonst Abendsnack klein halten." },
-    { Icon: Zap, c: H.up, t: "Carbs vor der harten Einheit hochfahren: Reis/Banane 1–2 h vorher, danach Whey + Carbs zum Auffüllen." },
-    { Icon: Scale, c: H.violet, t: "Gewicht stabil bei 83 kg (−0,4 kg/Woche) — im Zielkorridor, kein Eingreifen nötig." },
-  ];
   return (
     <Page title="Heute" sub={new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })}>
-      <Card style={{ display: "flex", gap: 18, alignItems: "center", marginBottom: 14 }}>
-        <Ring score={78} /><div><div style={{ fontSize: 13, color: H.sub }}>Readiness</div><div style={{ fontSize: 22, fontWeight: 800 }}>Bereit</div><div style={{ fontSize: 12, color: H.sub, marginTop: 2 }}>RHF 47 · Schlaf 7:12</div></div>
+      <Label style={{ margin: "0 4px 8px" }}>Heute · aus Apple Health</Label>
+      <div style={{ display: "flex", gap: 9, marginBottom: 14 }}>
+        <Stat label="Aktiv-kcal" value={dash(act)} accent />
+        <Stat label="Schlaf" value={ctx.sleep != null ? ctx.sleep + " h" : "—"} />
+        <Stat label="Ruhepuls" value={dash(ctx.rhf)} />
+        <Stat label="Gewicht" value={ctx.weight != null ? ctx.weight + " kg" : "—"} />
+      </div>
+
+      <Card style={{ marginBottom: 14 }}>
+        <Label style={{ marginBottom: 10 }}>Energiebilanz heute</Label>
+        <div style={{ display: "flex" }}>
+          <Bal label="Gegessen" v={eaten.k} />
+          <Bal label="Verbrauch" v={verbrauch} sub={act == null ? "nur Grundumsatz" : "inkl. Coros"} />
+          <Bal label={kLeft >= 0 ? "Übrig" : "Über"} v={Math.abs(kLeft)} strong />
+        </div>
       </Card>
-      <Label style={{ margin: "2px 4px 8px", color: H.blue }}><Dumbbell size={12} style={{ verticalAlign: "-2px" }} /> Training</Label>
-      {train.map((r, i) => <RecCard key={i} {...r} />)}
+
+      <Label style={{ margin: "2px 4px 8px", color: H.blue }}><Dumbbell size={12} style={{ verticalAlign: "-2px" }} /> Plan heute</Label>
+      <RecCard Icon={Dumbbell} c={H.blue} t={todayPlan} />
+
       <Label style={{ margin: "14px 4px 8px", color: H.up }}><Utensils size={12} style={{ verticalAlign: "-2px" }} /> Ernährung</Label>
-      {food.map((r, i) => <RecCard key={i} {...r} />)}
+      <RecCard Icon={Utensils} c={H.blue} t={pLeft > 0 ? "Noch " + pLeft + " g Protein bis zu deinem Ziel (" + set.protein + " g)." : "Protein-Ziel erreicht 💪"} />
+      <RecCard Icon={Flame} c={kLeft >= 0 ? H.up : H.amber} t={act == null ? "Sobald Coros heute synct, siehst du hier dein Kalorien-Budget." : (kLeft >= 0 ? "Noch " + kLeft + " kcal bis zum Verbrauch (" + verbrauch + " kcal)." : Math.abs(kLeft) + " kcal über deinem Verbrauch.")} />
     </Page>
   );
 }
 const RecCard = ({ Icon, c, t }) => <div style={{ display: "flex", gap: 11, alignItems: "flex-start", background: H.card, borderRadius: 14, border: "1px solid " + H.line, borderLeft: "3px solid " + c, padding: "13px 14px", marginBottom: 8 }}><Icon size={16} color={c} style={{ marginTop: 1, flexShrink: 0 }} /><span style={{ fontSize: 13.5, lineHeight: 1.45 }}>{t}</span></div>;
 
 /* ================= ANALYSE ================= */
-function Analyse() {
-  const areas = [{ Icon: Activity, c: H.blue, l: "Training", v: "9 / 11", n: "Lauf-Longrun fehlte" }, { Icon: Watch, c: H.violet, l: "Erholung", v: "HRV ↑", n: "Schlaf Ø 7:04 h" }, { Icon: Utensils, c: H.up, l: "Ernährung", v: "Ø 168 g P", n: "12 g unter Ziel" }, { Icon: Scale, c: "#38BDF8", l: "Gewicht", v: "83,0 kg", n: "−0,4 · Korridor" }];
-  const checks = [{ l: "Schwimmen", c: "#38BDF8", ok: true, t: "Pace 1:38/100 m — über Ziel." }, { l: "Rad", c: H.amber, ok: true, t: "Volumen im Aufbau-Soll." }, { l: "Laufen", c: H.up, ok: false, t: "Longrun max 18 km — zu kurz. Priorität." }];
+function Analyse({ data }) {
+  const days = Array.from({ length: 7 }, (_, i) => dstr(i)); // heute … -6 Tage
+  const ctxOf = (d) => data.context[d] || {};
+  const nums = (key) => days.map((d) => ctxOf(d)[key]).filter((v) => typeof v === "number");
+  const sleeps = nums("sleep"); const acts = nums("activity"); const rhrs = nums("rhf");
+  const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
+  const workoutsWk = (data.workouts || []).filter((w) => days.includes(w.date));
+  const protDays = days.map((d) => { const n = data.nutrition[d]; if (!n) return null; const p = [].concat(...MEALS.map(([k]) => n[k] || [])).reduce((a, m) => a + m.p, 0); return p > 0 ? p : null; }).filter((v) => v != null);
+  // Gewicht: neuester & ältester Wert im Fenster
+  let curW = null, oldW = null;
+  for (const d of days) { const w = ctxOf(d).weight; if (typeof w === "number") { if (curW == null) curW = w; oldW = w; } }
+  const wChange = curW != null && oldW != null ? Math.round((curW - oldW) * 10) / 10 : null;
+  const r0 = (v) => (v == null ? "—" : Math.round(v));
+  const r1 = (v) => (v == null ? "—" : Math.round(v * 10) / 10);
+
+  const areas = [
+    { Icon: Activity, c: H.blue, l: "Training", v: workoutsWk.length + " Einh.", n: "letzte 7 Tage" },
+    { Icon: Watch, c: H.violet, l: "Schlaf", v: sleeps.length ? r1(avg(sleeps)) + " h" : "—", n: "Ø / Nacht" },
+    { Icon: Flame, c: H.up, l: "Aktiv-Energie", v: acts.length ? r0(acts.reduce((a, b) => a + b, 0)) + " kcal" : "—", n: "Summe 7 Tage" },
+    { Icon: Utensils, c: H.amber, l: "Protein", v: protDays.length ? r0(avg(protDays)) + " g" : "—", n: "Ø / erf. Tag" },
+  ];
+
   return (
-    <Page title="Wochenauswertung" sub="KW 27 · 23.–29. Juni">
-      <Label style={{ margin: "0 4px 8px" }}>Alle Bereiche</Label>
+    <Page title="Wochenauswertung" sub="Letzte 7 Tage">
+      <Label style={{ margin: "0 4px 8px" }}>Deine Daten</Label>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginBottom: 16 }}>{areas.map((a) => <Card key={a.l} style={{ padding: 13 }}><div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}><a.Icon size={14} color={a.c} /><span style={{ fontSize: 12, color: H.sub, fontWeight: 600 }}>{a.l}</span></div><div style={{ fontSize: 16, fontWeight: 750 }}>{a.v}</div><div style={{ fontSize: 11.5, color: H.faint, marginTop: 2 }}>{a.n}</div></Card>)}</div>
-      <Label style={{ margin: "0 4px 8px" }}>Wettkampf-Realismus</Label>
-      <Card>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><div style={{ display: "flex", alignItems: "center", gap: 10 }}><Trophy size={20} color={H.amber} /><div><div style={{ fontSize: 15, fontWeight: 750 }}>Langdistanz</div><div style={{ fontSize: 12, color: H.sub }}>13.09.2026 · noch 11 Wochen</div></div></div><div style={{ textAlign: "right" }}><div style={{ fontSize: 10, color: H.faint, textTransform: "uppercase", letterSpacing: 0.5 }}>Prognose</div><div style={{ fontSize: 16, fontWeight: 800, color: H.up, fontVariantNumeric: "tabular-nums" }}>10:45–11:15</div></div></div>
-        {checks.map((c) => <div key={c.l} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "9px 0", borderTop: "1px solid " + H.line }}>{c.ok ? <CheckCircle2 size={16} color={H.up} style={{ marginTop: 1, flexShrink: 0 }} /> : <AlertTriangle size={16} color={H.amber} style={{ marginTop: 1, flexShrink: 0 }} />}<div><span style={{ fontSize: 13.5, fontWeight: 650, color: c.c }}>{c.l}: </span><span style={{ fontSize: 13.5 }}>{c.t}</span></div></div>)}
-        <div style={{ marginTop: 12, padding: 12, background: H.bg2, borderRadius: 11, fontSize: 13, lineHeight: 1.5 }}><b style={{ color: H.amber }}>Urteil: machbar</b> — wackelt am Run. Nächste 6 Wochen 2 lange Läufe (25 km+), dann kippt Run auf grün.</div>
+
+      <Label style={{ margin: "0 4px 8px" }}>Körper & Erholung</Label>
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", gap: 9 }}>
+          <Stat label="Gewicht" value={curW != null ? curW + " kg" : "—"} accent />
+          <Stat label="7-Tage-Trend" value={wChange == null ? "—" : (wChange > 0 ? "+" : "") + wChange + " kg"} color={wChange != null && wChange <= 0 ? H.up : H.text} />
+          <Stat label="Ruhepuls Ø" value={rhrs.length ? r0(avg(rhrs)) : "—"} />
+        </div>
       </Card>
-      <div style={{ fontSize: 11, color: H.faint, textAlign: "center", marginTop: 12 }}>Konzept-Vorschau · Beispieldaten · kein Ersatz für Coaching-Urteil</div>
+
+      <div style={{ fontSize: 11.5, color: H.faint, textAlign: "center", marginTop: 6, lineHeight: 1.5 }}>Basiert auf deinen echten Health- & App-Daten der letzten 7 Tage.<br />Wettkampf-Prognose kommt später mit richtiger Formel.</div>
     </Page>
   );
 }
