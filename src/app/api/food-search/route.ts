@@ -9,30 +9,32 @@ function num(v: number | string | undefined | null): number | null {
   return typeof n === "number" && Number.isFinite(n) ? Math.round(n * 10) / 10 : null;
 }
 
-type OFFProduct = {
+type OFFHit = {
   code?: string;
   product_name?: string;
   product_name_de?: string;
-  brands?: string;
+  brands?: string | string[];
   quantity?: string;
   nutriments?: Record<string, number | string | undefined>;
 };
+
+function brandStr(b: string | string[] | undefined): string {
+  if (Array.isArray(b)) return b.join(", ");
+  return b || "";
+}
 
 export async function GET(request: Request) {
   const q = new URL(request.url).searchParams.get("q")?.trim();
   if (!q || q.length < 2) return Response.json({ results: [] });
 
   try {
+    // search-a-licious (die klassische cgi/search.pl ist stark gedrosselt).
     const url =
-      "https://world.openfoodfacts.org/cgi/search.pl?" +
+      "https://search.openfoodfacts.org/search?" +
       new URLSearchParams({
-        search_terms: q,
-        search_simple: "1",
-        action: "process",
-        json: "1",
+        q,
         page_size: "25",
-        sort_by: "unique_scans_n", // beliebteste zuerst
-        lc: "de",
+        lang: "de",
         fields: "code,product_name,product_name_de,brands,quantity,nutriments",
       }).toString();
 
@@ -41,15 +43,15 @@ export async function GET(request: Request) {
       signal: AbortSignal.timeout(8000),
     });
     const data = await res.json();
-    const products: OFFProduct[] = Array.isArray(data.products) ? data.products : [];
+    const hits: OFFHit[] = Array.isArray(data.hits) ? data.hits : [];
 
-    const results = products
+    const results = hits
       .map((p) => {
         const nut = p.nutriments || {};
         return {
           barcode: p.code || "",
           name: p.product_name_de || p.product_name || "",
-          brand: p.brands || "",
+          brand: brandStr(p.brands),
           quantity: p.quantity || "",
           base_unit: "g",
           per: 100,
