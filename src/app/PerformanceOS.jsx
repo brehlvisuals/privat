@@ -180,7 +180,7 @@ export default function App() {
   return (
     <div style={{ background: H.bg, minHeight: "100dvh", fontFamily: "ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif", color: H.text }}>
       <Style />
-      <div style={{ maxWidth: 460, margin: "0 auto", minHeight: "100dvh", position: "relative", display: "flex", flexDirection: "column" }}>
+      <div style={{ maxWidth: 460, margin: "0 auto", height: "100dvh", overflow: "hidden", position: "relative", display: "flex", flexDirection: "column" }}>
         <div className="scroll" style={{ flex: 1, overflowY: "auto", padding: "env(safe-area-inset-top) 0 90px" }}>
           {tab === "home" && <Home data={data} />}
           {tab === "train" && <Training data={data} commit={commit} active={active} setActive={setActive} />}
@@ -576,7 +576,7 @@ function Home({ data }) {
   return (
     <Page title="Heute" sub={new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })}>
       <Card style={{ display: "flex", gap: 18, alignItems: "center", marginBottom: 14 }}>
-        <Ring score={78} /><div><div style={{ fontSize: 13, color: H.sub }}>Readiness</div><div style={{ fontSize: 22, fontWeight: 800 }}>Bereit</div><div style={{ fontSize: 12, color: H.sub, marginTop: 2 }}>HRV 68 ms · RHF 47 · Schlaf 7:12</div></div>
+        <Ring score={78} /><div><div style={{ fontSize: 13, color: H.sub }}>Readiness</div><div style={{ fontSize: 22, fontWeight: 800 }}>Bereit</div><div style={{ fontSize: 12, color: H.sub, marginTop: 2 }}>RHF 47 · Schlaf 7:12</div></div>
       </Card>
       <Label style={{ margin: "2px 4px 8px", color: H.blue }}><Dumbbell size={12} style={{ verticalAlign: "-2px" }} /> Training</Label>
       {train.map((r, i) => <RecCard key={i} {...r} />)}
