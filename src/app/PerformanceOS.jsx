@@ -110,9 +110,16 @@ async function load() {
 }
 
 let saveTimer = null;
-function writeState() {
+async function writeState() {
   if (!userId || !MEM) return;
-  try { supabase.from("app_state").upsert({ user_id: userId, data: MEM, updated_at: new Date().toISOString() }); } catch (e) {}
+  // WICHTIG: awaiten! Der Postgrest-Builder ist "lazy" und feuert den Request
+  // erst beim await/.then() — ohne await wird NIE geschrieben.
+  try {
+    const { error } = await supabase
+      .from("app_state")
+      .upsert({ user_id: userId, data: MEM, updated_at: new Date().toISOString() });
+    if (error) console.error("app_state write error:", error);
+  } catch (e) { console.error("app_state write exception:", e); }
 }
 async function persist(d) {
   MEM = d;

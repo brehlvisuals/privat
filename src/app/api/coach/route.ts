@@ -82,6 +82,11 @@ export async function POST(request: Request) {
       .map((b) => {
         if (b.type === "text") return { type: "text", text: b.text };
         if (b.type === "tool_use") return { type: "tool_use", id: b.id, name: b.name, input: b.input };
+        // Thinking-Blöcke MÜSSEN vollständig (inkl. Signatur) erhalten bleiben,
+        // sonst lehnt die API den Folge-Request im Tool-Loop ab
+        // ("messages.N.content.0.thinking.thinking: Field required").
+        if (b.type === "thinking") return { type: "thinking", thinking: b.thinking, signature: b.signature };
+        if (b.type === "redacted_thinking") return { type: "redacted_thinking", data: b.data };
         return { type: b.type };
       })
       // Leere Text-Blöcke entfernen — sonst lehnt die API den Folge-Request (Tool-Loop) ab.
