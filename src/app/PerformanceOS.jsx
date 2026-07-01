@@ -594,6 +594,8 @@ function NutSettings({ set, onSave, close }) {
   </Sheet>);
 }
 const UNIT_LABEL = { g: "g", ml: "ml", piece: "Stück", Portion: "Portion" };
+// Komma-toleranter Parser: deutsche Tastatur liefert "3,8" — Number("3,8") ist NaN.
+const dec = (v) => { const n = parseFloat(String(v ?? "").replace(",", ".")); return Number.isFinite(n) ? n : 0; };
 const favAsFood = (f) => ({ name: f.n, brand: "", base_unit: "Portion", per: 1, kcal: f.k, protein: f.p, fat: f.f, carbs: f.c });
 const blankForm = { name: "", brand: "", barcode: "", base_unit: "g", per: 100, kcal: "", protein: "", fat: "", carbs: "" };
 
@@ -631,12 +633,12 @@ function BarcodeScanner({ onDetected, onClose }) {
 function EditFood({ entry, onSave, onDelete, close }) {
   const baseName = (entry.n || "").split(" · ")[0];
   const base = entry.base || { k: entry.k, p: entry.p, f: entry.f, c: entry.c };
-  const per = Number(entry.per) || Number(entry.amount) || 1;
+  const per = dec(entry.per) || dec(entry.amount) || 1;
   const unit = entry.unit || "Portion";
   const [amount, setAmount] = useState(String(entry.amount != null ? entry.amount : per));
-  const factor = (Number(amount) || 0) / (per || 1);
-  const sc = (v) => Math.round((Number(v) || 0) * factor);
-  const save = () => onSave({ ...entry, n: baseName + " · " + amount + " " + (UNIT_LABEL[unit] || unit), amount: Number(amount) || 0, unit, per, base, k: sc(base.k), p: sc(base.p), f: sc(base.f), c: sc(base.c) });
+  const factor = dec(amount) / (per || 1);
+  const sc = (v) => Math.round(dec(v) * factor);
+  const save = () => onSave({ ...entry, n: baseName + " · " + amount + " " + (UNIT_LABEL[unit] || unit), amount: dec(amount), unit, per, base, k: sc(base.k), p: sc(base.p), f: sc(base.f), c: sc(base.c) });
   return (<Sheet close={close} title="Bearbeiten">
     <div style={{ fontSize: 16, fontWeight: 720, marginBottom: 12 }}>{baseName}</div>
     <Field label={"Menge in " + (UNIT_LABEL[unit] || unit)}>
@@ -662,6 +664,7 @@ function AddFood({ mealLabel, onAdd, close }) {
   const [form, setForm] = useState(blankForm);
   const [text, setText] = useState(""); const [aiBusy, setAiBusy] = useState(false); const [err, setErr] = useState("");
   const [scanBusy, setScanBusy] = useState(false);
+  const [remote, setRemote] = useState([]); const [searching, setSearching] = useState(false);
 
   useEffect(() => { (async () => {
     try { const { data: { user } } = await supabase.auth.getUser(); if (!user) return;
@@ -669,6 +672,20 @@ function AddFood({ mealLabel, onAdd, close }) {
       setLibrary(data || []);
     } catch (e) {}
   })(); }, []);
+
+  // Online-Datenbank (Open Food Facts) mitdurchsuchen — debounced.
+  useEffect(() => {
+    const s = q.trim();
+    if (s.length < 3) { setRemote([]); setSearching(false); return; }
+    setSearching(true);
+    const t = setTimeout(async () => {
+      try { const r = await fetch("/api/food-search?q=" + encodeURIComponent(s)).then((x) => x.json());
+        setRemote(Array.isArray(r.results) ? r.results : []);
+      } catch (e) { setRemote([]); }
+      setSearching(false);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [q]);
 
   const results = (() => {
     const all = [...library, ...FAVS.map(favAsFood)];
@@ -678,22 +695,22 @@ function AddFood({ mealLabel, onAdd, close }) {
 
   const pick = (food) => { setSelected(food); setAmount(String(food.per || (food.base_unit === "g" || food.base_unit === "ml" ? 100 : 1))); setMode("portion"); };
 
-  const factor = selected ? (Number(amount) || 0) / (Number(selected.per) || 1) : 0;
-  const sc = (v) => Math.round((Number(v) || 0) * factor);
+  const factor = selected ? dec(amount) / (dec(selected.per) || 1) : 0;
+  const sc = (v) => Math.round(dec(v) * factor);
 
   const addPortion = () => {
     if (!selected) return;
     onAdd({
       n: selected.name + " · " + amount + " " + (UNIT_LABEL[selected.base_unit] || selected.base_unit),
       p: sc(selected.protein), f: sc(selected.fat), c: sc(selected.carbs), k: sc(selected.kcal),
-      amount: Number(amount) || 0, unit: selected.base_unit, per: Number(selected.per) || 1,
-      base: { k: Number(selected.kcal) || 0, p: Number(selected.protein) || 0, f: Number(selected.fat) || 0, c: Number(selected.carbs) || 0 },
+      amount: dec(amount), unit: selected.base_unit, per: dec(selected.per) || 1,
+      base: { k: dec(selected.kcal), p: dec(selected.protein), f: dec(selected.fat), c: dec(selected.carbs) },
     });
     close();
   };
 
   const saveAndPick = async () => {
-    const f = { name: form.name.trim(), brand: form.brand.trim() || null, barcode: form.barcode || null, base_unit: form.base_unit, per: Number(form.per) || 100, kcal: Number(form.kcal) || 0, protein: Number(form.protein) || 0, fat: Number(form.fat) || 0, carbs: Number(form.carbs) || 0 };
+    const f = { name: form.name.trim(), brand: form.brand.trim() || null, barcode: form.barcode || null, base_unit: form.base_unit, per: dec(form.per) || 100, kcal: dec(form.kcal), protein: dec(form.protein), fat: dec(form.fat), carbs: dec(form.carbs) };
     if (!f.name) return;
     try { const { data: { user } } = await supabase.auth.getUser();
       const { data } = await supabase.from("foods").insert({ ...f, user_id: user.id }).select().single();
@@ -731,7 +748,20 @@ function AddFood({ mealLabel, onAdd, close }) {
             <div style={{ fontSize: 11.5, color: H.sub, fontVariantNumeric: "tabular-nums", marginTop: 1 }}>{f.kcal} kcal · {f.protein}P · {f.fat}F · {f.carbs}K <span style={{ color: H.faint }}>/ {f.per} {UNIT_LABEL[f.base_unit] || f.base_unit}</span></div>
           </button>
         ))}
-        {results.length === 0 && <div style={{ fontSize: 13, color: H.faint, textAlign: "center", padding: "16px 0" }}>Nichts gefunden — leg es als neues Lebensmittel an oder scanne den Barcode.</div>}
+        {(() => {
+          const known = new Set(library.map((f) => f.barcode).filter(Boolean));
+          const rem = remote.filter((r) => !r.barcode || !known.has(r.barcode)).slice(0, 20);
+          return (<>
+            {(rem.length > 0 || searching) && <div style={{ fontSize: 11, fontWeight: 700, color: H.faint, textTransform: "uppercase", letterSpacing: 0.4, margin: "10px 2px 7px" }}>Online-Datenbank {searching && "· sucht …"}</div>}
+            {rem.map((f, i) => (
+              <button key={"r" + (f.barcode || f.name) + i} onClick={() => pick(f)} style={{ all: "unset", cursor: "pointer", display: "block", width: "100%", boxSizing: "border-box", background: H.bg2, borderRadius: 11, padding: "11px 13px", marginBottom: 7 }}>
+                <div style={{ fontSize: 14, fontWeight: 650 }}>{f.name}{f.brand ? <span style={{ color: H.faint, fontWeight: 400 }}> · {f.brand}</span> : null}</div>
+                <div style={{ fontSize: 11.5, color: H.sub, fontVariantNumeric: "tabular-nums", marginTop: 1 }}>{f.kcal} kcal · {f.protein}P · {f.fat}F · {f.carbs}K <span style={{ color: H.faint }}>/ {f.per} {UNIT_LABEL[f.base_unit] || f.base_unit}</span></div>
+              </button>
+            ))}
+          </>);
+        })()}
+        {results.length === 0 && remote.length === 0 && !searching && q.trim().length >= 3 && <div style={{ fontSize: 13, color: H.faint, textAlign: "center", padding: "16px 0" }}>Nichts gefunden — leg es als neues Lebensmittel an oder scanne den Barcode.</div>}
       </div>
       <Label style={{ margin: "16px 0 8px", color: H.blue }}><Sparkles size={12} style={{ verticalAlign: "-2px" }} /> Oder mit KI schätzen</Label>
       <div style={{ display: "flex", gap: 8 }}>
