@@ -106,6 +106,7 @@ export async function POST(request: Request) {
   if (metrics) {
     // Pro Tag pro Metrik { sum, count } sammeln.
     const byDay: Record<string, Record<string, { sum: number; count: number }>> = {};
+    const aeRaw: Record<string, unknown[]> = {}; // DEBUG: rohe active_energy-Punkte
     for (const m of metrics as Array<Record<string, unknown>>) {
       const name = typeof m.name === "string" ? m.name : null;
       const points = Array.isArray(m.data) ? m.data : null;
@@ -118,6 +119,7 @@ export async function POST(request: Request) {
         const acc = (byDay[day][name] ??= { sum: 0, count: 0 });
         acc.sum += val;
         acc.count += 1;
+        if (name === "active_energy") (aeRaw[day] ??= []).push(p);
       }
     }
 
@@ -130,7 +132,7 @@ export async function POST(request: Request) {
     }
 
     const records = days.map((day) => {
-      const metricsObj: Record<string, number> = {};
+      const metricsObj: Record<string, unknown> = {};
       const rec: Record<string, unknown> = { date: day, metrics: metricsObj };
       for (const [name, { sum, count }] of Object.entries(byDay[day])) {
         const value = CUMULATIVE.has(name) ? sum : sum / count;
@@ -138,6 +140,7 @@ export async function POST(request: Request) {
         const map = COLUMN_MAP[name];
         if (map) rec[map.col] = map.int ? Math.round(value) : Math.round(value * 100) / 100;
       }
+      if (aeRaw[day]) metricsObj["_ae_raw"] = aeRaw[day]; // DEBUG
       return rec;
     });
 
