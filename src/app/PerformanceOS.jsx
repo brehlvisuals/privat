@@ -300,10 +300,12 @@ function Coach({ msgs, setMsgs, close, data, commit }) {
 function Training({ data, commit, active, setActive }) {
   const [mode, setMode] = useState("workout");
   const [detailEx, setDetailEx] = useState(null);
+  const [detailW, setDetailW] = useState(null);
   const [picker, setPicker] = useState(false);
   const sessForEx = (id) => data.workouts.flatMap((w) => w.exercises.filter((e) => e.exId === id).map((e) => ({ date: w.date, sets: e.sets, note: e.note }))).sort((a, b) => a.date.localeCompare(b.date));
 
   if (mode === "detail" && detailEx) return <Detail ex={detailEx} sess={sessForEx(detailEx.id)} context={data.context} back={() => setMode("library")} />;
+  if (mode === "wdetail" && detailW) { const w = data.workouts.find((x) => x.id === detailW) || null; if (!w) { setMode("workout"); return null; } return <WorkoutDetail w={w} back={() => setMode("workout")} onDelete={() => { commit({ ...data, workouts: data.workouts.filter((x) => x.id !== w.id) }); setMode("workout"); }} />; }
   if (mode === "plan") return <PlanView data={data} commit={commit} back={() => setMode("workout")} />;
 
   const startWorkout = () => setActive({ name: "Workout", startedAt: Date.now(), exercises: [] });
@@ -331,15 +333,59 @@ function Training({ data, commit, active, setActive }) {
           <>
             <button onClick={startWorkout} style={{ width: "100%", padding: 16, borderRadius: 14, border: "none", background: H.blue, color: "#fff", fontSize: 15, fontWeight: 750, cursor: "pointer", marginBottom: 18 }}>+ Neues Workout starten</button>
             <Label style={{ margin: "0 4px 8px" }}>Verlauf</Label>
+            {data.workouts.length === 0 && <div style={{ color: H.faint, fontSize: 13.5, textAlign: "center", padding: "18px 0" }}>Noch keine Workouts. Starte oben dein erstes.</div>}
             {[...data.workouts].reverse().map((w) => { const sets = w.exercises.reduce((a, e) => a + e.sets.length, 0); const vol = w.exercises.reduce((a, e) => a + e.sets.reduce((s, x) => s + x.w * x.r, 0), 0); return (
-              <Card key={w.id} style={{ marginBottom: 9 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 15, fontWeight: 720 }}>{w.name}</span><span style={{ fontSize: 12, color: H.sub }}>{dayLabel(w.date) === "Heute" ? "Heute" : fmtShort(w.date)}</span></div>
+              <button key={w.id} onClick={() => { setDetailW(w.id); setMode("wdetail"); }} style={{ all: "unset", cursor: "pointer", display: "block", width: "100%", boxSizing: "border-box", background: H.card, border: "1px solid " + H.line, borderRadius: 16, padding: 16, marginBottom: 9 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 15, fontWeight: 720 }}>{w.name}</span><span style={{ fontSize: 12, color: H.sub }}>{dayLabel(w.date) === "Heute" ? "Heute" : fmtShort(w.date)} <ChevronRight size={13} color={H.faint} style={{ verticalAlign: "-2px" }} /></span></div>
                 <div style={{ fontSize: 12.5, color: H.sub, marginTop: 4, display: "flex", gap: 12 }}><span><Clock size={11} style={{ verticalAlign: "-1px" }} /> {w.durationMin} min</span><span>{w.exercises.length} Üb · {sets} Sätze</span><span>{(vol / 1000).toFixed(1)} t</span></div>
                 <div style={{ fontSize: 12.5, color: H.faint, marginTop: 6 }}>{w.exercises.map((e) => e.name).join(" · ")}</div>
-              </Card>); })}
+              </button>); })}
           </>
         ) : <Library data={data} open={(ex) => { setDetailEx(ex); setMode("detail"); }} createEx={createEx} />}
       {picker && <ExercisePicker data={data} onPick={addEx} onCreate={(ex) => addEx(createEx(ex))} close={() => setPicker(false)} />}
+    </Page>
+  );
+}
+
+function WorkoutDetail({ w, back, onDelete }) {
+  const totalSets = w.exercises.reduce((a, e) => a + e.sets.length, 0);
+  const vol = w.exercises.reduce((a, e) => a + e.sets.reduce((s, x) => s + x.w * x.r, 0), 0);
+  const totalReps = w.exercises.reduce((a, e) => a + e.sets.reduce((s, x) => s + x.r, 0), 0);
+  const nS = (label, v) => <div style={{ flex: 1 }}><div style={{ fontSize: 10, color: H.faint, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 700 }}>{label}</div><div style={{ fontSize: 13, fontWeight: 700, marginTop: 2, color: H.text, fontVariantNumeric: "tabular-nums" }}>{v}</div></div>;
+  return (
+    <Page title={w.name} backFn={back} subEl={<span style={{ fontSize: 13, color: H.sub }}>{dayLabel(w.date)} · <Clock size={12} style={{ verticalAlign: "-2px" }} /> {w.durationMin} min</span>}>
+      <div style={{ display: "flex", gap: 9, marginBottom: 16 }}>
+        <Stat label="Volumen" value={(vol / 1000).toFixed(1) + " t"} accent />
+        <Stat label="Sätze" value={totalSets} />
+        <Stat label="Wdh gesamt" value={totalReps} />
+      </div>
+      <Label style={{ margin: "0 4px 8px" }}>Übungen</Label>
+      {w.exercises.map((e, i) => {
+        const evol = e.sets.reduce((s, x) => s + x.w * x.r, 0);
+        const best = e.sets.length ? bestSet(e.sets) : null;
+        const top = best ? e1rm(best.w, best.r) : 0;
+        return (
+          <Card key={i} style={{ marginBottom: 9 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 15, fontWeight: 720, color: H.blue }}>{e.name}</span><span style={{ fontSize: 12, color: H.sub }}>{e.sets.length} Sätze</span></div>
+            {e.gym && <div style={{ fontSize: 11.5, color: H.faint, marginTop: 1 }}><MapPin size={10} style={{ verticalAlign: "-1px" }} /> {e.gym}</div>}
+            <div style={{ display: "grid", gridTemplateColumns: "26px 1fr 1fr", gap: 8, margin: "10px 0 2px" }}>{["#", "KG", "WDH"].map((h, j) => <span key={j} style={{ fontSize: 10, letterSpacing: 1, color: H.faint, fontWeight: 700, textAlign: j ? "left" : "center" }}>{h}</span>)}</div>
+            {e.sets.map((s, j) => (
+              <div key={j} style={{ display: "grid", gridTemplateColumns: "26px 1fr 1fr", gap: 8, alignItems: "center", padding: "4px 0" }}>
+                <span style={{ width: 22, height: 22, borderRadius: 6, display: "grid", placeItems: "center", fontSize: 11, fontWeight: 750, margin: "0 auto", background: H.bg2, color: H.sub }}>{j + 1}</span>
+                <span style={{ fontSize: 14, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{s.w} kg</span>
+                <span style={{ fontSize: 14, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{s.r}</span>
+              </div>
+            ))}
+            <div style={{ display: "flex", gap: 14, marginTop: 10, paddingTop: 10, borderTop: "1px solid " + H.line }}>
+              {nS("Volumen", (evol / 1000).toFixed(2) + " t")}
+              {nS("Bester Satz", best ? best.w + " × " + best.r : "—")}
+              {nS("e1RM", top + " kg")}
+            </div>
+            {e.note && <div style={{ fontSize: 13, color: H.sub, marginTop: 9, fontStyle: "italic" }}>„{e.note}“</div>}
+          </Card>
+        );
+      })}
+      <button onClick={onDelete} style={{ width: "100%", marginTop: 8, padding: 12, borderRadius: 12, border: "1px solid " + H.line, background: "transparent", color: H.down, fontWeight: 650, fontSize: 13.5, cursor: "pointer" }}>Workout löschen</button>
     </Page>
   );
 }
@@ -695,6 +741,14 @@ function AddFood({ mealLabel, onAdd, close }) {
 
   const pick = (food) => { setSelected(food); setAmount(String(food.per || (food.base_unit === "g" || food.base_unit === "ml" ? 100 : 1))); setMode("portion"); };
 
+  const delLibrary = async (ev, food) => {
+    ev.stopPropagation();
+    if (!food.id) return;
+    if (typeof window !== "undefined" && !window.confirm("„" + food.name + "“ aus der Liste löschen?")) return;
+    setLibrary((l) => l.filter((x) => x.id !== food.id));
+    try { await supabase.from("foods").delete().eq("id", food.id); } catch (e) {}
+  };
+
   const factor = selected ? dec(amount) / (dec(selected.per) || 1) : 0;
   const sc = (v) => Math.round(dec(v) * factor);
 
@@ -743,10 +797,13 @@ function AddFood({ mealLabel, onAdd, close }) {
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Lebensmittel suchen" className="fld" style={{ ...sheetInput, paddingLeft: 34 }} /></div>
       <div style={{ maxHeight: 300, overflowY: "auto" }} className="scroll">
         {results.map((f, i) => (
-          <button key={(f.id || f.name) + i} onClick={() => pick(f)} style={{ all: "unset", cursor: "pointer", display: "block", width: "100%", boxSizing: "border-box", background: H.bg2, borderRadius: 11, padding: "11px 13px", marginBottom: 7 }}>
-            <div style={{ fontSize: 14, fontWeight: 650 }}>{f.name}{f.brand ? <span style={{ color: H.faint, fontWeight: 400 }}> · {f.brand}</span> : null}</div>
-            <div style={{ fontSize: 11.5, color: H.sub, fontVariantNumeric: "tabular-nums", marginTop: 1 }}>{f.kcal} kcal · {f.protein}P · {f.fat}F · {f.carbs}K <span style={{ color: H.faint }}>/ {f.per} {UNIT_LABEL[f.base_unit] || f.base_unit}</span></div>
-          </button>
+          <div key={(f.id || f.name) + i} style={{ display: "flex", alignItems: "stretch", background: H.bg2, borderRadius: 11, marginBottom: 7, overflow: "hidden" }}>
+            <button onClick={() => pick(f)} style={{ all: "unset", cursor: "pointer", flex: 1, boxSizing: "border-box", padding: "11px 13px", minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 650 }}>{f.name}{f.brand ? <span style={{ color: H.faint, fontWeight: 400 }}> · {f.brand}</span> : null}</div>
+              <div style={{ fontSize: 11.5, color: H.sub, fontVariantNumeric: "tabular-nums", marginTop: 1 }}>{f.kcal} kcal · {f.protein}P · {f.fat}F · {f.carbs}K <span style={{ color: H.faint }}>/ {f.per} {UNIT_LABEL[f.base_unit] || f.base_unit}</span></div>
+            </button>
+            {f.id && <button onClick={(ev) => delLibrary(ev, f)} title="Aus Liste löschen" style={{ all: "unset", cursor: "pointer", display: "flex", alignItems: "center", padding: "0 15px", color: H.faint, fontSize: 19 }}>×</button>}
+          </div>
         ))}
         {(() => {
           const known = new Set(library.map((f) => f.barcode).filter(Boolean));
