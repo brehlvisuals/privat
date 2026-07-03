@@ -65,6 +65,7 @@ const seed = () => ({
   context: {},
   nutrition: {},
   plan: {},
+  hiddenFavs: [], // ausgeblendete Beispiel-Lebensmittel (FAVS)
 });
 let MEM = null;
 let userId = null;
@@ -341,7 +342,7 @@ function Training({ data, commit, active, setActive }) {
                 <div style={{ fontSize: 12.5, color: H.faint, marginTop: 6 }}>{w.exercises.map((e) => e.name).join(" · ")}</div>
               </button>); })}
           </>
-        ) : <Library data={data} open={(ex) => { setDetailEx(ex); setMode("detail"); }} createEx={createEx} />}
+        ) : <Library data={data} open={(ex) => { setDetailEx(ex); setMode("detail"); }} createEx={createEx} del={(ex) => commit({ ...data, exercises: data.exercises.filter((x) => x.id !== ex.id) })} />}
       {picker && <ExercisePicker data={data} onPick={addEx} onCreate={(ex) => addEx(createEx(ex))} close={() => setPicker(false)} />}
     </Page>
   );
@@ -433,19 +434,24 @@ function SetTable({ sets, onChange }) {
 }
 const numStyle = { width: "100%", padding: "10px", borderRadius: 10, border: "1px solid transparent", background: H.bg2, color: H.text, fontSize: 16, fontWeight: 700, textAlign: "center", outline: "none", boxSizing: "border-box", fontVariantNumeric: "tabular-nums" };
 
-function Library({ data, open, createEx }) {
+function Library({ data, open, createEx, del }) {
   const [q, setQ] = useState(""); const [creating, setCreating] = useState(false);
   const list = data.exercises.filter((e) => e.name.toLowerCase().includes(q.toLowerCase()));
+  const rmEx = (ev, ex) => { ev.stopPropagation(); if (typeof window !== "undefined" && !window.confirm("Übung „" + ex.name + "“ löschen? (Bereits geloggte Workouts bleiben erhalten.)")) return; del && del(ex); };
   return (<>
     <div style={{ position: "relative", marginBottom: 12 }}><Search size={15} color={H.faint} style={{ position: "absolute", left: 12, top: 12 }} />
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Übung suchen" className="fld" style={{ width: "100%", padding: "10px 12px 10px 34px", borderRadius: 12, border: "1px solid transparent", background: H.bg2, color: H.text, fontSize: 14, boxSizing: "border-box", outline: "none" }} /></div>
     <button onClick={() => setCreating(true)} style={{ width: "100%", padding: 13, borderRadius: 12, border: "1px solid " + H.blue, background: H.blueSoft, color: H.blue, fontWeight: 750, fontSize: 14, cursor: "pointer", marginBottom: 14 }}>+ Neue Übung erstellen</button>
+    {list.length === 0 && <div style={{ fontSize: 13.5, color: H.faint, textAlign: "center", padding: "18px 0" }}>Keine Übungen. Erstelle oben deine erste.</div>}
     {list.map((ex) => (
-      <button key={ex.id} onClick={() => open(ex)} style={{ all: "unset", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", boxSizing: "border-box", background: H.card, border: "1px solid " + H.line, borderRadius: 14, padding: "14px 16px", marginBottom: 9 }}>
-        <div><div style={{ fontSize: 15.5, fontWeight: 700 }}>{ex.name} {ex.custom && <span style={{ fontSize: 10, color: H.blue, border: "1px solid " + H.blue, borderRadius: 5, padding: "1px 5px", marginLeft: 4 }}>eigen</span>}</div>
-          <div style={{ fontSize: 12, color: H.faint, marginTop: 2 }}>{ex.group}{ex.gym && " · "}{ex.gym && <span><MapPin size={10} style={{ verticalAlign: "-1px" }} /> {ex.gym}</span>}</div></div>
-        <ChevronRight size={16} color={H.faint} />
-      </button>))}
+      <div key={ex.id} style={{ display: "flex", alignItems: "stretch", background: H.card, border: "1px solid " + H.line, borderRadius: 14, marginBottom: 9, overflow: "hidden" }}>
+        <button onClick={() => open(ex)} style={{ all: "unset", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", flex: 1, boxSizing: "border-box", padding: "14px 12px 14px 16px", minWidth: 0 }}>
+          <div><div style={{ fontSize: 15.5, fontWeight: 700 }}>{ex.name} {ex.custom && <span style={{ fontSize: 10, color: H.blue, border: "1px solid " + H.blue, borderRadius: 5, padding: "1px 5px", marginLeft: 4 }}>eigen</span>}</div>
+            <div style={{ fontSize: 12, color: H.faint, marginTop: 2 }}>{ex.group}{ex.gym && " · "}{ex.gym && <span><MapPin size={10} style={{ verticalAlign: "-1px" }} /> {ex.gym}</span>}</div></div>
+          <ChevronRight size={16} color={H.faint} />
+        </button>
+        <button onClick={(ev) => rmEx(ev, ex)} title="Übung löschen" style={{ all: "unset", cursor: "pointer", display: "flex", alignItems: "center", padding: "0 15px", color: H.faint, fontSize: 19, borderLeft: "1px solid " + H.line }}>×</button>
+      </div>))}
     {creating && <CreateExercise onSave={(ex) => { createEx(ex); setCreating(false); }} close={() => setCreating(false)} />}
   </>);
 }
@@ -608,7 +614,7 @@ function Food({ data, commit }) {
         <div style={{ fontSize: 11, color: H.faint, textAlign: "center", marginTop: 6 }}>Wischen für anderen Tag · Aktivität live aus Coros</div>
       </div>
 
-      {addTo && <AddFood mealLabel={MEALS.find((m) => m[0] === addTo)[1]} onAdd={(item) => { addItem(addTo, item); setAddTo(null); }} close={() => setAddTo(null)} />}
+      {addTo && <AddFood mealLabel={MEALS.find((m) => m[0] === addTo)[1]} onAdd={(item) => { addItem(addTo, item); setAddTo(null); }} close={() => setAddTo(null)} data={data} commit={commit} />}
       {edit && day[edit.meal] && day[edit.meal][edit.idx] && <EditFood entry={day[edit.meal][edit.idx]} onSave={(ne) => { updItem(edit.meal, edit.idx, ne); setEdit(null); }} onDelete={() => { delItem(edit.meal, edit.idx); setEdit(null); }} close={() => setEdit(null)} />}
       {showSet && <NutSettings set={set} onSave={(s) => { commit({ ...data, settings: s }); setShowSet(false); }} close={() => setShowSet(false)} />}
     </Page>
@@ -642,7 +648,7 @@ function NutSettings({ set, onSave, close }) {
 const UNIT_LABEL = { g: "g", ml: "ml", piece: "Stück", Portion: "Portion" };
 // Komma-toleranter Parser: deutsche Tastatur liefert "3,8" — Number("3,8") ist NaN.
 const dec = (v) => { const n = parseFloat(String(v ?? "").replace(",", ".")); return Number.isFinite(n) ? n : 0; };
-const favAsFood = (f) => ({ name: f.n, brand: "", base_unit: "Portion", per: 1, kcal: f.k, protein: f.p, fat: f.f, carbs: f.c });
+const favAsFood = (f) => ({ name: f.n, brand: "", base_unit: "Portion", per: 1, kcal: f.k, protein: f.p, fat: f.f, carbs: f.c, _fav: f.n });
 const blankForm = { name: "", brand: "", barcode: "", base_unit: "g", per: 100, kcal: "", protein: "", fat: "", carbs: "" };
 
 function BarcodeScanner({ onDetected, onClose }) {
@@ -701,7 +707,7 @@ function EditFood({ entry, onSave, onDelete, close }) {
   </Sheet>);
 }
 
-function AddFood({ mealLabel, onAdd, close }) {
+function AddFood({ mealLabel, onAdd, close, data, commit }) {
   const [mode, setMode] = useState("search"); // search | portion | create | scan
   const [q, setQ] = useState("");
   const [library, setLibrary] = useState([]);
@@ -733,8 +739,9 @@ function AddFood({ mealLabel, onAdd, close }) {
     return () => clearTimeout(t);
   }, [q]);
 
+  const hiddenFavs = (data && data.hiddenFavs) || [];
   const results = (() => {
-    const all = [...library, ...FAVS.map(favAsFood)];
+    const all = [...library, ...FAVS.filter((f) => !hiddenFavs.includes(f.n)).map(favAsFood)];
     const s = q.trim().toLowerCase();
     return (s ? all.filter((f) => (f.name + " " + (f.brand || "")).toLowerCase().includes(s)) : all).slice(0, 60);
   })();
@@ -743,8 +750,12 @@ function AddFood({ mealLabel, onAdd, close }) {
 
   const delLibrary = async (ev, food) => {
     ev.stopPropagation();
-    if (!food.id) return;
     if (typeof window !== "undefined" && !window.confirm("„" + food.name + "“ aus der Liste löschen?")) return;
+    if (food._fav) { // Beispiel-Lebensmittel: dauerhaft ausblenden (in app_state)
+      if (commit && data) commit({ ...data, hiddenFavs: [...((data.hiddenFavs) || []), food._fav] });
+      return;
+    }
+    if (!food.id) return;
     setLibrary((l) => l.filter((x) => x.id !== food.id));
     try { await supabase.from("foods").delete().eq("id", food.id); } catch (e) {}
   };
@@ -802,7 +813,7 @@ function AddFood({ mealLabel, onAdd, close }) {
               <div style={{ fontSize: 14, fontWeight: 650 }}>{f.name}{f.brand ? <span style={{ color: H.faint, fontWeight: 400 }}> · {f.brand}</span> : null}</div>
               <div style={{ fontSize: 11.5, color: H.sub, fontVariantNumeric: "tabular-nums", marginTop: 1 }}>{f.kcal} kcal · {f.protein}P · {f.fat}F · {f.carbs}K <span style={{ color: H.faint }}>/ {f.per} {UNIT_LABEL[f.base_unit] || f.base_unit}</span></div>
             </button>
-            {f.id && <button onClick={(ev) => delLibrary(ev, f)} title="Aus Liste löschen" style={{ all: "unset", cursor: "pointer", display: "flex", alignItems: "center", padding: "0 15px", color: H.faint, fontSize: 19 }}>×</button>}
+            {(f.id || f._fav) && <button onClick={(ev) => delLibrary(ev, f)} title="Aus Liste löschen" style={{ all: "unset", cursor: "pointer", display: "flex", alignItems: "center", padding: "0 15px", color: H.faint, fontSize: 19 }}>×</button>}
           </div>
         ))}
         {(() => {
