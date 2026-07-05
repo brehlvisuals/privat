@@ -4,7 +4,8 @@ import { createClient } from "@/lib/supabase/client";
 import {
   Flame, Dumbbell, Utensils, BarChart3, Plus, X, ChevronLeft, ChevronRight,
   Sparkles, MapPin, Search, Trophy, Watch, Activity, Scale, CheckCircle2,
-  AlertTriangle, Zap, Clock, Settings, ClipboardList, Send, MessageCircle
+  AlertTriangle, Zap, Clock, Settings, ClipboardList, Send, MessageCircle,
+  Camera, Mic
 } from "lucide-react";
 
 const H = {
@@ -20,6 +21,13 @@ const dstr = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d
 const today = dstr(0);
 const fmtShort = (s) => new Date(s).toLocaleDateString("de-DE", { day: "2-digit", month: "short" });
 const dayLabel = (s) => s === today ? "Heute" : s === dstr(1) ? "Gestern" : s === dstr(-1) ? "Morgen" : new Date(s).toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
+// Aktivitäts-kcal eines Tages inkl. manueller Korrektur (activityAdj). null wenn gar nichts da.
+const actOf = (data, date) => {
+  const base = ((data.context && data.context[date]) || {}).activity;
+  const adj = ((data.activityAdj || {})[date]) || 0;
+  if ((base == null || typeof base !== "number") && !adj) return null;
+  return Math.round((typeof base === "number" ? base : 0) + adj);
+};
 const shiftDate = (s, d) => { const x = new Date(s); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); };
 const todayIdx = (new Date().getDay() + 6) % 7;
 
@@ -66,6 +74,7 @@ const seed = () => ({
   nutrition: {},
   plan: {},
   hiddenFavs: [], // ausgeblendete Beispiel-Lebensmittel (FAVS)
+  activityAdj: {}, // manuelle Aktivitäts-kcal-Korrektur pro Datum (überlebt Health-Sync)
 });
 let MEM = null;
 let userId = null;
@@ -148,32 +157,37 @@ async function estimateFood(text) {
   const o = JSON.parse(out.replace(/```json|```/g, "").trim());
   return { n: o.n, p: Math.round(o.p), f: Math.round(o.f), c: Math.round(o.c), k: Math.round(o.k), ai: true };
 }
-const COACH_SYS = "Du bist der KI-Coach in Felix' privatem Performance OS. Felix ist pescetarischer Ironman-Triathlet, 26, 186 cm, 83 kg. Er trainiert Schwimmen, Rad, Laufen, Kraft, Calisthenics. Du hast Zugriff auf seine aktuellen App-Daten (siehe Abschnitt AKTUELLE DATEN) — nutze sie und antworte konkret und datenbasiert. Erfinde keine Werte; wenn etwas fehlt (z.B. Aktivität noch nicht von Coros synchronisiert), sag das ehrlich. Sag NIEMALS, dass du kein Tracking-System hast oder eine andere App nötig wäre — die geloggten Mahlzeiten, Trainings und Health-Werte stehen dir unten zur Verfügung. Wenn Felix eine zusammengesetzte Mahlzeit nennt (z.B. 'Brötchen mit Frischkäse und 5 Eiern'), logge JEDE Zutat als EIGENEN log_meal-Aufruf (ein Aufruf pro Lebensmittel, je mit Menge/Einheit + eigenen Nährwerten) — fasse sie NICHT zu einem Eintrag zusammen. Antworte kurz, konkret und auf Deutsch in der Du-Form. Kein Ersatz für Arzt/Coach bei medizinischen Fragen.";
+const COACH_SYS = "Du bist der KI-Coach in Felix' privatem Performance OS. Felix ist pescetarischer Ironman-Triathlet, 26, 186 cm, 83 kg. Er trainiert Schwimmen, Rad, Laufen, Kraft, Calisthenics. Du hast Zugriff auf seine aktuellen App-Daten (siehe Abschnitt AKTUELLE DATEN) — nutze sie und antworte konkret und datenbasiert. Erfinde keine Werte; wenn etwas fehlt (z.B. Aktivität noch nicht von Coros synchronisiert), sag das ehrlich. Sag NIEMALS, dass du kein Tracking-System hast oder eine andere App nötig wäre.\n\nDu kannst aktiv in der App handeln über Tools:\n- log_meal: Gegessenes ins Tagebuch eintragen. Bei zusammengesetzten Mahlzeiten JEDE Zutat als EIGENEN log_meal-Aufruf (nicht zusammenfassen), je mit Menge/Einheit + eigenen Nährwerten.\n- create_food: ein festes Lebensmittel dauerhaft in Felix' Bibliothek anlegen (wenn er etwas speichern/anlegen will), Nährwerte pro Referenzmenge.\n- adjust_activity: die Aktiv-kcal (Coros/Apple Health) manuell korrigieren, wenn Coros falsch übertragen hat — z.B. 'addiere 500 kcal' → mode 'add', kcal 500.\nWenn Felix ein Training beschreibt oder bewertet haben will, analysiere seine geloggten Workouts (siehe Kontext) konkret: Volumen, Progression, Balance, Regeneration. Wenn du ein Tool sinnvoll einsetzen kannst, TU es, statt nur zu erklären. Antworte kurz, konkret und auf Deutsch in der Du-Form. Kein Ersatz für Arzt/Coach bei medizinischen Fragen.";
 
 // Baut aus dem echten App-Zustand einen kompakten Live-Kontext für den Coach.
 function buildCoachContext(data) {
   const s = data.settings; const ctx = data.context[today] || {}; const nut = data.nutrition[today] || emptyDay();
   const eaten = [].concat(...MEALS.map(([k]) => nut[k] || [])).reduce((a, m) => ({ p: a.p + m.p, f: a.f + m.f, c: a.c + m.c, k: a.k + m.k }), { p: 0, f: 0, c: 0, k: 0 });
   const meals = MEALS.map(([k, label]) => { const it = nut[k] || []; return it.length ? label + ": " + it.map((m) => m.n + " (" + m.k + " kcal, " + m.p + "g P)").join(", ") : null; }).filter(Boolean);
-  const act = typeof ctx.activity === "number" ? ctx.activity : null;
+  const act = actOf(data, today);
+  const adjToday = ((data.activityAdj || {})[today]) || 0;
   const verbrauch = s.bmr + (act || 0);
-  const plan = (data.plan[todayIdx] || []).map((x) => PDISC[x.disc].l + " " + x.detail).join(", ") || "Ruhetag";
-  const recentW = [...(data.workouts || [])].slice(-3).reverse().map((w) => fmtShort(w.date) + " " + w.name).join("; ") || "keine geloggt";
+  const recentW = [...(data.workouts || [])].slice(-5).reverse().map((w) => {
+    const sets = w.exercises.reduce((a, e) => a + e.sets.length, 0);
+    const vol = w.exercises.reduce((a, e) => a + e.sets.reduce((ss, x) => ss + x.w * x.r, 0), 0);
+    const exs = w.exercises.map((e) => e.name + " (" + e.sets.map((x) => x.w + "×" + x.r).join(", ") + ")").join("; ");
+    return fmtShort(w.date) + ' "' + w.name + '" · ' + w.durationMin + " min, " + sets + " Sätze, " + (vol / 1000).toFixed(1) + " t — " + exs;
+  }).join("\n  ") || "keine geloggt";
   const days7 = Array.from({ length: 7 }, (_, i) => dstr(i));
-  const acts7 = days7.map((d) => (data.context[d] || {}).activity).filter((v) => typeof v === "number");
+  const acts7 = days7.map((d) => actOf(data, d)).filter((v) => typeof v === "number");
   const w7 = (data.workouts || []).filter((w) => days7.includes(w.date)).length;
   const L = [];
   L.push("Datum: " + new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" }));
   L.push("Ziele: Grundumsatz " + s.bmr + " kcal, Protein " + s.protein + " g, Fett " + s.fat + " g, Kohlenhydrate " + s.carbs + " g.");
   L.push("Heute gegessen: " + eaten.k + " kcal (" + eaten.p + "g Protein, " + eaten.f + "g Fett, " + eaten.c + "g KH).");
   L.push("Mahlzeiten heute: " + (meals.length ? meals.join(" | ") : "noch nichts geloggt"));
-  L.push("Aktivitätsenergie heute (Coros): " + (act == null ? "noch nicht synchronisiert" : act + " kcal") + ". Gesamtverbrauch: " + verbrauch + " kcal. Bilanz: " + (eaten.k - verbrauch) + " kcal.");
+  L.push("Aktivitätsenergie heute: " + (act == null ? "noch nicht synchronisiert" : act + " kcal") + (adjToday ? " (davon " + (adjToday > 0 ? "+" : "") + adjToday + " manuell korrigiert)" : "") + ". Gesamtverbrauch: " + verbrauch + " kcal. Bilanz: " + (eaten.k - verbrauch) + " kcal.");
   L.push("Noch offen: " + Math.max(0, s.protein - eaten.p) + " g Protein, " + (verbrauch - eaten.k) + " kcal bis zum Verbrauch.");
   if (ctx.sleep != null) L.push("Schlaf letzte Nacht: " + ctx.sleep + " h.");
   if (ctx.rhf != null) L.push("Ruhepuls: " + ctx.rhf + " bpm.");
   if (ctx.weight != null) L.push("Gewicht: " + ctx.weight + " kg.");
-  L.push("Plan heute: " + plan + ".");
-  L.push("Letzte Workouts: " + recentW + ". Letzte 7 Tage: " + w7 + " Workouts, Aktiv-Energie-Summe " + (acts7.reduce((a, b) => a + b, 0) || 0) + " kcal.");
+  L.push("Letzte 7 Tage: " + w7 + " Workouts, Aktiv-Energie-Summe " + (acts7.reduce((a, b) => a + b, 0) || 0) + " kcal.");
+  L.push("Letzte Workouts (Details):\n  " + recentW);
   return L.join("\n");
 }
 
@@ -216,14 +230,17 @@ export default function App() {
 
 /* ================= COACH CHAT ================= */
 const COACH_MEALS = { breakfast: "Frühstück", lunch: "Mittag", dinner: "Abend", snack: "Snack" };
+const TOOL_LABEL = { log_meal: "📝 Eingetragen", create_food: "🥗 Lebensmittel angelegt", adjust_activity: "🔥 Aktiv-kcal angepasst" };
 function displayOf(m) {
   if (typeof m.content === "string") return m.content;
   if (Array.isArray(m.content)) {
     if (m.role === "user" && m.content.every((b) => b.type === "tool_result")) return null;
+    const hasImg = m.content.some((b) => b.type === "image");
     const txt = m.content.filter((b) => b.type === "text").map((b) => b.text).join("");
+    if (m.role === "user") return (hasImg ? "📷 " : "") + (txt || (hasImg ? "Foto" : ""));
     if (txt) return txt;
     const tools = m.content.filter((b) => b.type === "tool_use");
-    if (tools.length) return "📝 Eingetragen: " + tools.map((b) => (b.input && b.input.name) || "Mahlzeit").join(", ");
+    if (tools.length) return tools.map((b) => (TOOL_LABEL[b.name] || "✓") + (b.input && b.input.name ? ": " + b.input.name : "")).join("\n");
     return null;
   }
   return null;
@@ -231,38 +248,62 @@ function displayOf(m) {
 
 function Coach({ msgs, setMsgs, close, data, commit }) {
   const [text, setText] = useState(""); const [busy, setBusy] = useState(false);
-  const endRef = useRef(null);
+  const [img, setImg] = useState(null); // { media_type, data(base64), preview }
+  const [rec, setRec] = useState(false);
+  const endRef = useRef(null); const fileRef = useRef(null); const recogRef = useRef(null);
   useEffect(() => { endRef.current && endRef.current.scrollIntoView({ behavior: "smooth" }); }, [msgs, busy]);
 
-  const applyLogs = (logs) => {
-    if (!logs.length) return;
-    let nutri = { ...data.nutrition };
-    for (const b of logs) {
-      const meal = COACH_MEALS[b.input.meal] ? b.input.meal : "snack";
-      const amt = Number(b.input.amount) || 1;
-      const unit = b.input.unit || "Portion";
-      const base = { k: Math.round(Number(b.input.kcal) || 0), p: Math.round(Number(b.input.protein) || 0), f: Math.round(Number(b.input.fat) || 0), c: Math.round(Number(b.input.carbs) || 0) };
-      const label = String(b.input.name || "Mahlzeit") + (b.input.amount ? " · " + amt + " " + (UNIT_LABEL[unit] || unit) : "");
-      const e = { n: label, k: base.k, p: base.p, f: base.f, c: base.c, ai: true, amount: amt, unit, per: amt, base };
-      const day = nutri[today] || emptyDay();
-      nutri = { ...nutri, [today]: { ...day, [meal]: [...(day[meal] || []), e] } };
+  // Führt die Tool-Aktionen des Coaches aus, gibt tool_result-Inhalte zurück.
+  const applyActions = async (toolUses, startData) => {
+    let d = startData; const results = [];
+    for (const b of toolUses) {
+      const inp = b.input || {};
+      try {
+        if (b.name === "log_meal") {
+          const meal = COACH_MEALS[inp.meal] ? inp.meal : "snack";
+          const amt = dec(inp.amount) || 1; const unit = inp.unit || "Portion";
+          const base = { k: Math.round(dec(inp.kcal)), p: Math.round(dec(inp.protein)), f: Math.round(dec(inp.fat)), c: Math.round(dec(inp.carbs)) };
+          const label = String(inp.name || "Mahlzeit") + (inp.amount ? " · " + amt + " " + (UNIT_LABEL[unit] || unit) : "");
+          const e = { n: label, k: base.k, p: base.p, f: base.f, c: base.c, ai: true, amount: amt, unit, per: amt, base };
+          const day = d.nutrition[today] || emptyDay();
+          d = { ...d, nutrition: { ...d.nutrition, [today]: { ...day, [meal]: [...(day[meal] || []), e] } } };
+          results.push({ id: b.id, content: "Eingetragen: " + label + " (" + base.k + " kcal, " + base.p + "g P)." });
+        } else if (b.name === "adjust_activity") {
+          const date = /^\d{4}-\d{2}-\d{2}$/.test(inp.date || "") ? inp.date : today;
+          const kcal = Math.round(dec(inp.kcal));
+          const baseVal = ((d.context && d.context[date]) || {}).activity;
+          const baseNum = typeof baseVal === "number" ? baseVal : 0;
+          const nextAdj = inp.mode === "set" ? (kcal - baseNum) : (((d.activityAdj || {})[date]) || 0) + kcal;
+          d = { ...d, activityAdj: { ...(d.activityAdj || {}), [date]: nextAdj } };
+          results.push({ id: b.id, content: "Aktiv-kcal für " + date + " " + (inp.mode === "set" ? "gesetzt auf " + kcal : ((kcal >= 0 ? "+" : "") + kcal)) + ". Neuer Wert: " + (actOf(d, date) == null ? "—" : actOf(d, date)) + " kcal." });
+        } else if (b.name === "create_food") {
+          const f = { name: String(inp.name || "").trim(), brand: (inp.brand || "").trim() || null, barcode: null, base_unit: inp.base_unit || "g", per: dec(inp.per) || 100, kcal: dec(inp.kcal), protein: dec(inp.protein), fat: dec(inp.fat), carbs: dec(inp.carbs) };
+          try { const { data: { user } } = await supabase.auth.getUser(); if (user) await supabase.from("foods").insert({ ...f, user_id: user.id }); } catch (e) {}
+          results.push({ id: b.id, content: 'Lebensmittel "' + f.name + '" in der Bibliothek angelegt (' + f.kcal + " kcal / " + f.per + " " + f.base_unit + ")." });
+        } else { results.push({ id: b.id, content: "OK." }); }
+      } catch (e) { results.push({ id: b.id, content: "Aktion fehlgeschlagen." }); }
     }
-    commit({ ...data, nutrition: nutri });
+    if (d !== startData) commit(d);
+    return { results, nextData: d };
   };
 
   const send = async () => {
-    const t = text.trim(); if (!t || busy) return;
-    let convo = [...msgs, { role: "user", content: t }]; setMsgs(convo); setText(""); setBusy(true);
+    const t = text.trim(); if ((!t && !img) || busy) return;
+    const userContent = img
+      ? [...(t ? [{ type: "text", text: t }] : [{ type: "text", text: "Was ist das? Schätze die Nährwerte." }]), { type: "image", source: { type: "base64", media_type: img.media_type, data: img.data } }]
+      : t;
+    let convo = [...msgs, { role: "user", content: userContent }]; setMsgs(convo); setText(""); setImg(null); setBusy(true);
+    let work = data;
     const sys = COACH_SYS + "\n\n## AKTUELLE DATEN\n" + buildCoachContext(data);
     try {
-      for (let iter = 0; iter < 4; iter++) {
+      for (let iter = 0; iter < 5; iter++) {
         const res = await fetch("/api/coach", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: convo.map((m) => ({ role: m.role, content: m.content })), system: sys, tools: true }) }).then((r) => r.json());
         if (!res || !res.content) throw new Error("bad response");
         convo = [...convo, { role: "assistant", content: res.content }]; setMsgs(convo);
         if (res.stop_reason === "tool_use") {
-          applyLogs(res.content.filter((b) => b.type === "tool_use" && b.name === "log_meal"));
-          const results = res.content.filter((b) => b.type === "tool_use").map((b) => ({ type: "tool_result", tool_use_id: b.id, content: "Erfolgreich eingetragen." }));
-          convo = [...convo, { role: "user", content: results }]; setMsgs(convo);
+          const toolUses = res.content.filter((b) => b.type === "tool_use");
+          const { results, nextData } = await applyActions(toolUses, work); work = nextData;
+          convo = [...convo, { role: "user", content: results.map((r) => ({ type: "tool_result", tool_use_id: r.id, content: r.content })) }]; setMsgs(convo);
           continue;
         }
         break;
@@ -270,6 +311,25 @@ function Coach({ msgs, setMsgs, close, data, commit }) {
     } catch (e) { setMsgs([...convo, { role: "assistant", content: "Hm, da ging was schief. Probier's nochmal." }]); }
     setBusy(false);
   };
+
+  const onPickImg = (e) => {
+    const file = e.target.files && e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => { const res = String(reader.result); const base64 = res.split(",")[1] || ""; setImg({ media_type: file.type || "image/jpeg", data: base64, preview: res }); };
+    reader.readAsDataURL(file); e.target.value = "";
+  };
+
+  const toggleDictation = () => {
+    const SR = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
+    if (!SR) { alert("Diktat wird auf diesem Gerät nicht unterstützt — nutze das Mikro auf der Tastatur."); return; }
+    if (rec && recogRef.current) { recogRef.current.stop(); return; }
+    const r = new SR(); r.lang = "de-DE"; r.interimResults = true; r.continuous = false;
+    let final = "";
+    r.onresult = (ev) => { let interim = ""; for (let i = ev.resultIndex; i < ev.results.length; i++) { const tr = ev.results[i]; if (tr.isFinal) final += tr[0].transcript; else interim += tr[0].transcript; } setText((prev) => (final || interim) ? (prev.replace(/\s*$/, "") + " " + (final || interim)).trim() : prev); };
+    r.onerror = () => setRec(false); r.onend = () => { setRec(false); recogRef.current = null; };
+    recogRef.current = r; setRec(true); try { r.start(); } catch (e) { setRec(false); }
+  };
+
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", flexDirection: "column", background: H.bg }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "calc(16px + env(safe-area-inset-top)) 18px 16px", borderBottom: "1px solid " + H.line }}>
@@ -288,10 +348,22 @@ function Coach({ msgs, setMsgs, close, data, commit }) {
         {busy && <div style={{ fontSize: 13, color: H.sub, padding: "2px 4px" }}>Coach tippt …</div>}
         <div ref={endRef} />
       </div>
-      <div style={{ display: "flex", gap: 8, padding: 14, borderTop: "1px solid " + H.line }}>
-        <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") send(); }} placeholder="Frag den Coach …" className="fld"
-          style={{ flex: 1, padding: "13px 14px", borderRadius: 13, border: "1px solid transparent", background: H.bg2, color: H.text, fontSize: 15, outline: "none" }} />
-        <button onClick={send} disabled={busy || !text.trim()} style={{ width: 48, borderRadius: 13, border: "none", background: busy || !text.trim() ? H.card : H.blue, color: "#fff", cursor: "pointer", display: "grid", placeItems: "center" }}><Send size={18} /></button>
+      <div style={{ padding: 14, borderTop: "1px solid " + H.line, paddingBottom: "calc(14px + env(safe-area-inset-bottom))" }}>
+        {img && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, background: H.bg2, borderRadius: 12, padding: 8 }}>
+            <img src={img.preview} alt="" style={{ width: 46, height: 46, borderRadius: 9, objectFit: "cover" }} />
+            <span style={{ flex: 1, fontSize: 12.5, color: H.sub }}>Foto angehängt</span>
+            <button onClick={() => setImg(null)} className="press" style={{ all: "unset", cursor: "pointer", color: H.faint, fontSize: 18, padding: "0 6px" }}>×</button>
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+          <input ref={fileRef} type="file" accept="image/*" onChange={onPickImg} style={{ display: "none" }} />
+          <button onClick={() => fileRef.current && fileRef.current.click()} title="Foto" className="press" style={{ width: 44, height: 46, flexShrink: 0, borderRadius: 12, border: "none", background: H.bg2, color: H.sub, cursor: "pointer", display: "grid", placeItems: "center" }}><Camera size={19} /></button>
+          <button onClick={toggleDictation} title="Diktieren" className="press" style={{ width: 44, height: 46, flexShrink: 0, borderRadius: 12, border: "none", background: rec ? H.down : H.bg2, color: rec ? "#fff" : H.sub, cursor: "pointer", display: "grid", placeItems: "center" }}><Mic size={19} /></button>
+          <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") send(); }} placeholder={rec ? "Sprich jetzt …" : "Frag den Coach …"} className="fld"
+            style={{ flex: 1, minWidth: 0, padding: "13px 14px", borderRadius: 13, border: "1px solid transparent", background: H.bg2, color: H.text, fontSize: 15, outline: "none" }} />
+          <button onClick={send} disabled={busy || (!text.trim() && !img)} className="press" style={{ width: 48, height: 46, flexShrink: 0, borderRadius: 13, border: "none", background: busy || (!text.trim() && !img) ? H.card : H.blue, color: "#fff", cursor: "pointer", display: "grid", placeItems: "center" }}><Send size={18} /></button>
+        </div>
       </div>
     </div>
   );
@@ -305,23 +377,20 @@ function Training({ data, commit, active, setActive }) {
   const [picker, setPicker] = useState(false);
   const sessForEx = (id) => data.workouts.flatMap((w) => w.exercises.filter((e) => e.exId === id).map((e) => ({ date: w.date, sets: e.sets, note: e.note }))).sort((a, b) => a.date.localeCompare(b.date));
 
-  if (mode === "detail" && detailEx) return <Detail ex={detailEx} sess={sessForEx(detailEx.id)} context={data.context} back={() => setMode("library")} />;
-  if (mode === "wdetail" && detailW) { const w = data.workouts.find((x) => x.id === detailW) || null; if (!w) { setMode("workout"); return null; } return <WorkoutDetail w={w} back={() => setMode("workout")} onDelete={() => { commit({ ...data, workouts: data.workouts.filter((x) => x.id !== w.id) }); setMode("workout"); }} />; }
-  if (mode === "plan") return <PlanView data={data} commit={commit} back={() => setMode("workout")} />;
+  if (mode === "detail" && detailEx) return <Detail ex={detailEx} sess={sessForEx(detailEx.id)} context={data.context} back={() => setMode("library")} onSave={(patch) => { const ne = { ...detailEx, ...patch }; setDetailEx(ne); commit({ ...data, exercises: data.exercises.map((x) => (x.id === ne.id ? { ...x, ...patch } : x)) }); }} />;
+  if (mode === "wdetail" && detailW) { const w = data.workouts.find((x) => x.id === detailW) || null; if (!w) { setMode("workout"); return null; } return <WorkoutDetail w={w} back={() => setMode("workout")} onSave={(nw) => commit({ ...data, workouts: data.workouts.map((x) => (x.id === nw.id ? nw : x)) })} onDelete={() => { commit({ ...data, workouts: data.workouts.filter((x) => x.id !== w.id) }); setMode("workout"); }} />; }
 
-  const startWorkout = () => setActive({ name: "Workout", startedAt: Date.now(), exercises: [] });
+  const startWorkout = () => setActive({ name: "", startedAt: Date.now(), exercises: [] });
   const addEx = (ex) => { setActive((a) => ({ ...a, exercises: [...a.exercises, { exId: ex.id, name: ex.name, gym: ex.gym, note: "", sets: [] }] })); setPicker(false); };
   const createEx = (ex) => { const id = "c" + Date.now(); commit({ ...data, exercises: [...data.exercises, { ...ex, id, custom: true }] }); return { ...ex, id }; };
   const finish = () => {
-    const exs = active.exercises.map((e) => ({ ...e, sets: e.sets.filter((s) => s.w && s.r).map((s) => ({ w: Number(s.w), r: Number(s.r) })) })).filter((e) => e.sets.length);
-    if (exs.length) { const dur = Math.max(1, Math.round((Date.now() - active.startedAt) / 60000)); commit({ ...data, workouts: [...data.workouts, { id: "w" + Date.now(), date: today, name: active.name, durationMin: dur, exercises: exs }] }); }
+    const exs = active.exercises.map((e) => ({ ...e, sets: e.sets.filter((s) => dec(s.w) && dec(s.r)).map((s) => ({ w: dec(s.w), r: dec(s.r) })) })).filter((e) => e.sets.length);
+    if (exs.length) { const dur = Math.max(1, Math.round((Date.now() - active.startedAt) / 60000)); commit({ ...data, workouts: [...data.workouts, { id: "w" + Date.now(), date: today, name: (active.name || "").trim() || "Workout", durationMin: dur, exercises: exs }] }); }
     setActive(null);
   };
 
-  const tpIcon = !active ? <button onClick={() => setMode("plan")} style={iconBtn} title="Trainingsplan"><ClipboardList size={20} color={H.sub} /></button> : null;
-
   return (
-    <Page title={active ? "Aktives Workout" : "Training"} action={tpIcon}>
+    <Page title={active ? "Aktives Workout" : "Training"}>
       {!active && (
         <div style={{ display: "flex", gap: 4, marginBottom: 16, background: H.bg2, padding: 4, borderRadius: 12, width: "fit-content" }}>
           {[["workout", "Workouts"], ["library", "Übungen"]].map(([k, l]) => (
@@ -329,7 +398,7 @@ function Training({ data, commit, active, setActive }) {
           ))}
         </div>
       )}
-      {active ? <ActiveWorkout active={active} setActive={setActive} openPicker={() => setPicker(true)} finish={finish} />
+      {active ? <ActiveWorkout active={active} setActive={setActive} openPicker={() => setPicker(true)} finish={finish} data={data} />
         : mode === "workout" ? (
           <>
             <button onClick={startWorkout} style={{ width: "100%", padding: 16, borderRadius: 14, border: "none", background: H.blue, color: "#fff", fontSize: 15, fontWeight: 750, cursor: "pointer", marginBottom: 18 }}>+ Neues Workout starten</button>
@@ -348,20 +417,50 @@ function Training({ data, commit, active, setActive }) {
   );
 }
 
-function WorkoutDetail({ w, back, onDelete }) {
-  const totalSets = w.exercises.reduce((a, e) => a + e.sets.length, 0);
-  const vol = w.exercises.reduce((a, e) => a + e.sets.reduce((s, x) => s + x.w * x.r, 0), 0);
-  const totalReps = w.exercises.reduce((a, e) => a + e.sets.reduce((s, x) => s + x.r, 0), 0);
+function WorkoutDetail({ w, back, onDelete, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(w);
+  const src = editing ? draft : w;
+  const totalSets = src.exercises.reduce((a, e) => a + e.sets.length, 0);
+  const vol = src.exercises.reduce((a, e) => a + e.sets.reduce((s, x) => s + dec(x.w) * dec(x.r), 0), 0);
+  const totalReps = src.exercises.reduce((a, e) => a + e.sets.reduce((s, x) => s + dec(x.r), 0), 0);
   const nS = (label, v) => <div style={{ flex: 1 }}><div style={{ fontSize: 10, color: H.faint, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 700 }}>{label}</div><div style={{ fontSize: 13, fontWeight: 700, marginTop: 2, color: H.text, fontVariantNumeric: "tabular-nums" }}>{v}</div></div>;
+
+  const updEx = (i, fn) => setDraft((d) => ({ ...d, exercises: d.exercises.map((e, j) => (j === i ? fn(e) : e)) }));
+  const rmEx = (i) => setDraft((d) => ({ ...d, exercises: d.exercises.filter((_, j) => j !== i) }));
+  const startEdit = () => { setDraft(w); setEditing(true); };
+  const cancel = () => { setDraft(w); setEditing(false); };
+  const save = () => {
+    const cleaned = { ...draft, name: (draft.name || "").trim() || "Workout",
+      exercises: draft.exercises.map((e) => ({ ...e, name: (e.name || "").trim() || e.name, sets: e.sets.filter((s) => dec(s.w) && dec(s.r)).map((s) => ({ w: dec(s.w), r: dec(s.r) })) })).filter((e) => e.sets.length) };
+    onSave && onSave(cleaned); setEditing(false);
+  };
+
+  const editAction = editing
+    ? <button onClick={save} className="press" style={{ ...iconBtn, color: H.up, fontWeight: 750, fontSize: 14, width: "auto", padding: "0 6px" }}>Fertig</button>
+    : <button onClick={startEdit} className="press" style={iconBtn} title="Bearbeiten"><Settings size={18} color={H.sub} /></button>;
+
   return (
-    <Page title={w.name} backFn={back} subEl={<span style={{ fontSize: 13, color: H.sub }}>{dayLabel(w.date)} · <Clock size={12} style={{ verticalAlign: "-2px" }} /> {w.durationMin} min</span>}>
-      <div style={{ display: "flex", gap: 9, marginBottom: 16 }}>
+    <Page title={editing ? "Bearbeiten" : src.name} backFn={editing ? cancel : back} action={editAction}
+      subEl={!editing && <span style={{ fontSize: 13, color: H.sub }}>{dayLabel(src.date)} · <Clock size={12} style={{ verticalAlign: "-2px" }} /> {src.durationMin} min</span>}>
+      {editing && <input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} placeholder="Workout-Name" className="fld"
+        style={{ width: "100%", marginBottom: 14, padding: "13px 14px", borderRadius: 13, border: "1px solid transparent", background: H.bg2, color: H.text, fontSize: 16, fontWeight: 700, boxSizing: "border-box", outline: "none" }} />}
+      {!editing && <div style={{ display: "flex", gap: 9, marginBottom: 16 }}>
         <Stat label="Volumen" value={(vol / 1000).toFixed(1) + " t"} accent />
         <Stat label="Sätze" value={totalSets} />
         <Stat label="Wdh gesamt" value={totalReps} />
-      </div>
+      </div>}
       <Label style={{ margin: "0 4px 8px" }}>Übungen</Label>
-      {w.exercises.map((e, i) => {
+      {src.exercises.map((e, i) => {
+        if (editing) return (
+          <Card key={i} style={{ marginBottom: 9 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input value={e.name} onChange={(ev) => updEx(i, (x) => ({ ...x, name: ev.target.value }))} className="fld" style={{ flex: 1, padding: "10px 12px", borderRadius: 11, border: "1px solid transparent", background: H.bg2, color: H.blue, fontSize: 15, fontWeight: 720, boxSizing: "border-box", outline: "none" }} />
+              <button onClick={() => rmEx(i)} className="press" style={{ all: "unset", cursor: "pointer", color: H.faint, fontSize: 18, padding: "0 4px" }}>×</button>
+            </div>
+            <SetTable sets={e.sets.map((s) => ({ w: String(s.w), r: String(s.r) }))} onChange={(sets) => updEx(i, (x) => ({ ...x, sets }))} />
+          </Card>
+        );
         const evol = e.sets.reduce((s, x) => s + x.w * x.r, 0);
         const best = e.sets.length ? bestSet(e.sets) : null;
         const top = best ? e1rm(best.w, best.r) : 0;
@@ -386,48 +485,60 @@ function WorkoutDetail({ w, back, onDelete }) {
           </Card>
         );
       })}
-      <button onClick={onDelete} style={{ width: "100%", marginTop: 8, padding: 12, borderRadius: 12, border: "1px solid " + H.line, background: "transparent", color: H.down, fontWeight: 650, fontSize: 13.5, cursor: "pointer" }}>Workout löschen</button>
+      <button onClick={onDelete} className="press" style={{ width: "100%", marginTop: 8, padding: 12, borderRadius: 12, border: "1px solid " + H.line, background: "transparent", color: H.down, fontWeight: 650, fontSize: 13.5, cursor: "pointer" }}>Workout löschen</button>
     </Page>
   );
 }
 
-function ActiveWorkout({ active, setActive, openPicker, finish }) {
+function ActiveWorkout({ active, setActive, openPicker, finish, data }) {
   const updEx = (i, fn) => setActive((a) => ({ ...a, exercises: a.exercises.map((e, j) => (j === i ? fn(e) : e)) }));
   const rmEx = (i) => setActive((a) => ({ ...a, exercises: a.exercises.filter((_, j) => j !== i) }));
+  const setName = (v) => setActive((a) => ({ ...a, name: v }));
   const [el, setEl] = useState(0);
   useEffect(() => { const t = setInterval(() => setEl(Math.round((Date.now() - active.startedAt) / 1000)), 1000); return () => clearInterval(t); }, [active.startedAt]);
   const mm = String(Math.floor(el / 60)).padStart(2, "0"), ss = String(el % 60).padStart(2, "0");
+  // Letzte Session dieser Übung (nach exId, sonst Name) für „letztes Mal"-Anzeige.
+  const lastSets = (ex) => {
+    const past = (data.workouts || []).filter((w) => w.exercises.some((e) => (ex.exId && e.exId === ex.exId) || e.name === ex.name));
+    if (!past.length) return null;
+    const w = past[past.length - 1];
+    const e = w.exercises.find((e) => (ex.exId && e.exId === ex.exId) || e.name === ex.name);
+    return e && e.sets.length ? { date: w.date, sets: e.sets } : null;
+  };
   return (
     <>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-        <span style={{ fontSize: 14, color: H.sub, fontVariantNumeric: "tabular-nums" }}><Clock size={13} style={{ verticalAlign: "-2px" }} /> {mm}:{ss}</span>
-        <button onClick={finish} style={{ border: "none", background: H.up, color: "#06281C", padding: "8px 16px", borderRadius: 10, fontWeight: 750, fontSize: 13, cursor: "pointer" }}>Beenden & speichern</button>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, gap: 10 }}>
+        <span style={{ fontSize: 14, color: H.sub, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}><Clock size={13} style={{ verticalAlign: "-2px" }} /> {mm}:{ss}</span>
+        <button onClick={finish} className="press" style={{ border: "none", background: H.up, color: "#06281C", padding: "8px 16px", borderRadius: 10, fontWeight: 750, fontSize: 13, cursor: "pointer", flexShrink: 0 }}>Beenden & speichern</button>
       </div>
+      <input value={active.name} onChange={(e) => setName(e.target.value)} placeholder="Workout-Name (z.B. Push A, Beine, Oberkörper)" className="fld"
+        style={{ width: "100%", marginBottom: 14, padding: "13px 14px", borderRadius: 13, border: "1px solid transparent", background: H.bg2, color: H.text, fontSize: 16, fontWeight: 700, boxSizing: "border-box", outline: "none" }} />
       {active.exercises.length === 0 && <div style={{ color: H.faint, fontSize: 14, textAlign: "center", padding: "30px 0" }}>Noch keine Übung. Füg unten welche hinzu.</div>}
-      {active.exercises.map((ex, i) => (
+      {active.exercises.map((ex, i) => { const last = lastSets(ex); return (
         <Card key={i} style={{ marginBottom: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div><div style={{ fontSize: 17, fontWeight: 720, color: H.blue }}>{ex.name}</div>{ex.gym && <div style={{ fontSize: 11.5, color: H.faint, marginTop: 1 }}><MapPin size={10} style={{ verticalAlign: "-1px" }} /> {ex.gym}</div>}</div>
-            <button onClick={() => rmEx(i)} style={{ all: "unset", cursor: "pointer", color: H.faint, fontSize: 18 }}>×</button>
+            <button onClick={() => rmEx(i)} className="press" style={{ all: "unset", cursor: "pointer", color: H.faint, fontSize: 18 }}>×</button>
           </div>
-          <SetTable sets={ex.sets} onChange={(sets) => updEx(i, (e) => ({ ...e, sets }))} />
+          {last && <div style={{ fontSize: 11.5, color: H.faint, marginTop: 6, background: H.bg2, borderRadius: 9, padding: "7px 10px" }}>Letztes Mal ({fmtShort(last.date)}): {last.sets.map((x) => x.w + "×" + x.r).join("  ·  ")}</div>}
+          <SetTable sets={ex.sets} onChange={(sets) => updEx(i, (e) => ({ ...e, sets }))} last={last ? last.sets : null} />
           <input value={ex.note} onChange={(e) => updEx(i, (x) => ({ ...x, note: e.target.value }))} placeholder="Notiz …" className="fld" style={{ width: "100%", marginTop: 9, padding: "10px 12px", borderRadius: 11, border: "1px solid transparent", background: H.bg2, color: H.text, fontSize: 13, boxSizing: "border-box", outline: "none" }} />
         </Card>
-      ))}
-      <button onClick={openPicker} style={{ width: "100%", padding: 14, borderRadius: 14, border: "1px solid " + H.blue, background: H.blueSoft, color: H.blue, fontSize: 14, fontWeight: 750, cursor: "pointer" }}>+ Übung hinzufügen</button>
+      ); })}
+      <button onClick={openPicker} className="press" style={{ width: "100%", padding: 14, borderRadius: 14, border: "1px solid " + H.blue, background: H.blueSoft, color: H.blue, fontSize: 14, fontWeight: 750, cursor: "pointer" }}>+ Übung hinzufügen</button>
     </>
   );
 }
-function SetTable({ sets, onChange }) {
+function SetTable({ sets, onChange, last }) {
   const add = () => onChange([...sets, { w: "", r: "" }]); const upd = (i, k, v) => onChange(sets.map((s, j) => (j === i ? { ...s, [k]: v } : s))); const del = (i) => onChange(sets.filter((_, j) => j !== i));
   return (<>
     <div style={{ display: "grid", gridTemplateColumns: "26px 1fr 1fr 30px", gap: 8, margin: "12px 0 2px" }}>{["SATZ", "KG", "WDH", ""].map((h, i) => <span key={i} style={{ fontSize: 10, letterSpacing: 1, color: H.faint, fontWeight: 700, textAlign: i ? "left" : "center" }}>{h}</span>)}</div>
-    {sets.map((s, i) => { const done = s.w && s.r; return (
+    {sets.map((s, i) => { const done = s.w && s.r; const lp = last && last[i]; return (
       <div key={i} style={{ display: "grid", gridTemplateColumns: "26px 1fr 1fr 30px", gap: 8, alignItems: "center", padding: "5px 0", background: done ? H.blueSoft : "transparent", borderRadius: 8 }}>
         <span style={{ width: 24, height: 24, borderRadius: 7, display: "grid", placeItems: "center", fontSize: 12, fontWeight: 750, margin: "0 auto", background: done ? H.blue : H.bg2, color: done ? "#fff" : H.sub }}>{i + 1}</span>
-        <input value={s.w} onChange={(e) => upd(i, "w", e.target.value)} inputMode="decimal" placeholder="kg" className="fld" style={numStyle} />
-        <input value={s.r} onChange={(e) => upd(i, "r", e.target.value)} inputMode="numeric" placeholder="Wdh" className="fld" style={numStyle} />
-        <button onClick={() => del(i)} style={{ all: "unset", cursor: "pointer", textAlign: "center", color: H.faint, fontSize: 17 }}>×</button>
+        <input value={s.w} onChange={(e) => upd(i, "w", e.target.value)} inputMode="decimal" placeholder={lp ? String(lp.w) : "kg"} className="fld" style={numStyle} />
+        <input value={s.r} onChange={(e) => upd(i, "r", e.target.value)} inputMode="numeric" placeholder={lp ? String(lp.r) : "Wdh"} className="fld" style={numStyle} />
+        <button onClick={() => del(i)} className="press" style={{ all: "unset", cursor: "pointer", textAlign: "center", color: H.faint, fontSize: 17 }}>×</button>
       </div>); })}
     <button onClick={add} className="addset" style={{ width: "100%", marginTop: 9, padding: 10, borderRadius: 11, border: "1px solid " + H.line, background: "transparent", cursor: "pointer", color: H.blue, fontSize: 13, fontWeight: 700 }}>+ Satz</button>
   </>);
@@ -455,13 +566,14 @@ function Library({ data, open, createEx, del }) {
     {creating && <CreateExercise onSave={(ex) => { createEx(ex); setCreating(false); }} close={() => setCreating(false)} />}
   </>);
 }
-function CreateExercise({ onSave, close }) {
-  const [name, setName] = useState(""); const [group, setGroup] = useState(""); const [gym, setGym] = useState("");
-  return (<Sheet close={close} title="Neue Übung">
+function CreateExercise({ onSave, close, initial }) {
+  const [name, setName] = useState((initial && initial.name) || ""); const [group, setGroup] = useState((initial && initial.group && initial.group !== "—" ? initial.group : "")); const [gym, setGym] = useState((initial && initial.gym) || "");
+  const editing = !!initial;
+  return (<Sheet close={close} title={editing ? "Übung bearbeiten" : "Neue Übung"}>
     <Field label="Name"><input value={name} onChange={(e) => setName(e.target.value)} placeholder="z.B. Bulgarian Split Squat" className="fld" style={sheetInput} /></Field>
     <Field label="Muskelgruppe"><input value={group} onChange={(e) => setGroup(e.target.value)} placeholder="z.B. Beine" className="fld" style={sheetInput} /></Field>
     <Field label="Gym / Ort"><input value={gym} onChange={(e) => setGym(e.target.value)} placeholder="z.B. McFit Köln-Süd" className="fld" style={sheetInput} /></Field>
-    <button disabled={!name} onClick={() => onSave({ name, group: group || "—", gym })} style={{ width: "100%", marginTop: 6, padding: 14, borderRadius: 13, border: "none", background: name ? H.blue : H.card, color: name ? "#fff" : H.faint, fontWeight: 750, fontSize: 15, cursor: name ? "pointer" : "default" }}>Übung speichern</button>
+    <button disabled={!name.trim()} onClick={() => onSave({ name: name.trim(), group: group.trim() || "—", gym: gym.trim() })} style={{ width: "100%", marginTop: 6, padding: 14, borderRadius: 13, border: "none", background: name.trim() ? H.blue : H.card, color: name.trim() ? "#fff" : H.faint, fontWeight: 750, fontSize: 15, cursor: name.trim() ? "pointer" : "default" }}>{editing ? "Änderungen speichern" : "Übung speichern"}</button>
   </Sheet>);
 }
 function ExercisePicker({ data, onPick, onCreate, close }) {
@@ -477,60 +589,16 @@ function ExercisePicker({ data, onPick, onCreate, close }) {
   </Sheet>);
 }
 
-/* ---------- TRAININGSPLAN ---------- */
-function PlanView({ data, commit, back }) {
-  const plan = data.plan; const days = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
-  const [tip, setTip] = useState(""); const [busy, setBusy] = useState(false);
-  const setPlan = (np) => commit({ ...data, plan: np });
-  const updSession = (di, si, fn) => setPlan({ ...plan, [di]: plan[di].map((s, j) => (j === si ? fn(s) : s)) });
-  const addSession = (di) => setPlan({ ...plan, [di]: [...(plan[di] || []), { disc: "strength", detail: "" }] });
-  const rmSession = (di, si) => setPlan({ ...plan, [di]: plan[di].filter((_, j) => j !== si) });
-  const cycleDisc = (cur) => DKEYS[(DKEYS.indexOf(cur) + 1) % DKEYS.length];
-
-  const askAI = async () => {
-    setBusy(true); setTip("");
-    const summary = days.map((d, i) => d + ": " + ((plan[i] || []).map((s) => PDISC[s.disc].l + " " + s.detail).join(", ") || "Ruhe")).join("\n");
-    try { const r = await callClaude([{ role: "user", content: "Hier ist mein aktueller Ironman-Wochenplan (Wettkampf in ~11 Wochen, Schwäche: lange Läufe):\n" + summary + "\n\nGib mir 3 kurze, konkrete Verbesserungsvorschläge. Nur die 3 Punkte, je 1 Satz, keine Einleitung." }], COACH_SYS); setTip(r); }
-    catch (e) { setTip("KI-Vorschlag gerade nicht verfügbar — nochmal versuchen."); }
-    setBusy(false);
-  };
-
-  return (
-    <Page title="Trainingsplan" backFn={back}>
-      <button onClick={askAI} disabled={busy} style={{ width: "100%", padding: 13, borderRadius: 13, border: "none", background: busy ? H.card : "linear-gradient(135deg,#4D86FF,#2E6BFF)", color: busy ? H.faint : "#fff", fontWeight: 750, fontSize: 14, cursor: busy ? "default" : "pointer", marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-        <Sparkles size={16} /> {busy ? "Coach denkt nach …" : "KI-Vorschlag zum Plan"}
-      </button>
-      {tip && <div style={{ background: H.blueSoft, border: "1px solid " + H.blue + "44", borderRadius: 14, padding: 14, marginBottom: 16, fontSize: 13.5, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{tip}</div>}
-
-      {days.map((d, di) => (
-        <Card key={di} style={{ marginBottom: 10, padding: 14, border: di === todayIdx ? "1px solid " + H.blue : "1px solid " + H.line }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: (plan[di] || []).length ? 10 : 0 }}>
-            <span style={{ fontSize: 14.5, fontWeight: 720 }}>{d} {di === todayIdx && <span style={{ fontSize: 10, color: H.blue, marginLeft: 4 }}>heute</span>}</span>
-            <button onClick={() => addSession(di)} style={{ all: "unset", cursor: "pointer", color: H.blue, fontSize: 13, fontWeight: 700 }}>+ Einheit</button>
-          </div>
-          {(plan[di] || []).map((s, si) => { const d2 = PDISC[s.disc]; return (
-            <div key={si} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              <button onClick={() => updSession(di, si, (x) => ({ ...x, disc: cycleDisc(x.disc) }))} title="Disziplin wechseln"
-                style={{ flexShrink: 0, border: "none", cursor: "pointer", background: d2.c + "22", color: d2.c, fontSize: 11.5, fontWeight: 750, padding: "7px 10px", borderRadius: 9, minWidth: 78 }}>{d2.l}</button>
-              <input value={s.detail} onChange={(e) => updSession(di, si, (x) => ({ ...x, detail: e.target.value }))} placeholder="Details (z.B. 8 km Easy)" className="fld"
-                style={{ flex: 1, padding: "9px 11px", borderRadius: 10, border: "1px solid transparent", background: H.bg2, color: H.text, fontSize: 13.5, outline: "none", boxSizing: "border-box" }} />
-              <button onClick={() => rmSession(di, si)} style={{ all: "unset", cursor: "pointer", color: H.faint, fontSize: 17 }}>×</button>
-            </div>); })}
-          {!(plan[di] || []).length && <div style={{ fontSize: 13, color: H.faint, marginTop: 8 }}>Ruhetag</div>}
-        </Card>
-      ))}
-      <div style={{ fontSize: 11, color: H.faint, textAlign: "center", marginTop: 6 }}>Tippe auf die Disziplin zum Wechseln · alles editierbar, speichert automatisch</div>
-    </Page>
-  );
-}
-
-function Detail({ ex, sess, context, back }) {
+function Detail({ ex, sess, context, back, onSave }) {
+  const [editing, setEditing] = useState(false);
   const points = sess.map((s) => ({ date: s.date, val: e1rm(bestSet(s.sets).w, bestSet(s.sets).r) }));
   const tr = trend(points.map((p) => p.val)); const pr = sess.length ? Math.max(...sess.flatMap((s) => s.sets.map((x) => x.w))) : 0;
   const cur = points.length ? points[points.length - 1].val : 0; const insight = buildInsight(sess, context); const recent = [...sess].reverse().slice(0, 6);
+  const editAction = onSave ? <button onClick={() => setEditing(true)} className="press" style={iconBtn} title="Übung bearbeiten"><Settings size={18} color={H.sub} /></button> : null;
   return (
-    <Page title={ex.name} backFn={back} subEl={ex.gym && <span style={{ fontSize: 13, color: H.sub }}><MapPin size={12} style={{ verticalAlign: "-2px" }} /> {ex.gym}</span>}>
-      {sess.length < 1 ? <div style={{ color: H.faint, padding: 20, fontSize: 14 }}>Noch keine Sessions geloggt.</div> : <>
+    <Page title={ex.name} backFn={back} action={editAction} subEl={ex.gym && <span style={{ fontSize: 13, color: H.sub }}><MapPin size={12} style={{ verticalAlign: "-2px" }} /> {ex.gym}</span>}>
+      {editing && <CreateExercise initial={ex} onSave={(patch) => { onSave(patch); setEditing(false); }} close={() => setEditing(false)} />}
+      {sess.length < 1 ? <div style={{ color: H.faint, padding: 20, fontSize: 14 }}>Noch keine Sessions geloggt. Tippe oben rechts aufs Zahnrad, um Name/Gruppe zu ändern.</div> : <>
         <div style={{ display: "flex", gap: 9, marginBottom: 14 }}><Stat label="e1RM" value={cur + " kg"} /><Stat label="Bestes" value={pr + " kg"} accent /><Stat label="Trend" value={tr.arrow + " " + tr.label} color={tr.color} /></div>
         <Card style={{ marginBottom: 14, padding: "16px 10px 6px" }}><Label style={{ padding: "0 6px 4px" }}>Verlauf · geschätztes 1RM</Label><Chart points={points} /></Card>
         {insight && <div style={{ background: H.blueSoft, border: "1px solid " + H.blue + "44", borderRadius: 16, padding: 16, marginBottom: 14 }}><Label style={{ color: H.blue }}>Kontext-Analyse</Label><div style={{ fontSize: 14, lineHeight: 1.55 }}>Deine starken Sessions hängen zusammen mit <b>{insight.join(", ")}</b>.{tr.dir === "down" && " Der aktuelle Einbruch passt ins selbe Muster — zuerst auf Schlaf & Protein schauen."}</div></div>}
@@ -553,15 +621,24 @@ function Food({ data, commit }) {
   const day = (data.nutrition && data.nutrition[date]) || emptyDay();
   const all = [].concat(...MEALS.map(([k]) => day[k] || []));
   const sum = all.reduce((a, m) => ({ p: a.p + m.p, f: a.f + m.f, c: a.c + m.c, k: a.k + m.k }), { p: 0, f: 0, c: 0, k: 0 });
-  const act = (data.context[date] && data.context[date].activity);
+  const act = actOf(data, date);
   const verbrauch = set.bmr + (act || 0); const bilanz = sum.k - verbrauch;
 
   const setDay = (next) => commit({ ...data, nutrition: { ...data.nutrition, [date]: next } });
   const addItem = (meal, item) => setDay({ ...day, [meal]: [...(day[meal] || []), item] });
   const delItem = (meal, idx) => setDay({ ...day, [meal]: day[meal].filter((_, j) => j !== idx) });
   const updItem = (meal, idx, ne) => setDay({ ...day, [meal]: day[meal].map((x, j) => (j === idx ? ne : x)) });
-  const onTS = (e) => { touch.current = e.touches[0].clientX; };
-  const onTE = (e) => { if (touch.current == null) return; const dx = e.changedTouches[0].clientX - touch.current; if (Math.abs(dx) > 55) setDate((d) => shiftDate(d, dx < 0 ? 1 : -1)); touch.current = null; };
+  const onTS = (e) => { const t = e.touches[0]; touch.current = { x: t.clientX, y: t.clientY, t: Date.now() }; };
+  const onTE = (e) => {
+    if (!touch.current) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touch.current.x, dy = t.clientY - touch.current.y, dt = Date.now() - touch.current.t;
+    touch.current = null;
+    // Nur eindeutige, schnelle Horizontal-Wischer: weit genug, klar horizontal, nicht zu langsam.
+    if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 2.2 && Math.abs(dy) < 45 && dt < 600) {
+      setDate((d) => shiftDate(d, dx < 0 ? 1 : -1));
+    }
+  };
 
   return (
     <Page title="Ernährung" action={<button onClick={() => setShowSet(true)} style={iconBtn} title="Ziele einstellen"><Settings size={19} color={H.sub} /></button>}>
@@ -891,10 +968,10 @@ function Macro({ label, v, t, color }) { const pct = Math.min(100, (v / t) * 100
 function Home({ data }) {
   const set = data.settings; const ctx = data.context[today] || {}; const nut = data.nutrition[today] || emptyDay();
   const eaten = [].concat(...MEALS.map(([k]) => nut[k] || [])).reduce((a, m) => ({ p: a.p + m.p, k: a.k + m.k }), { p: 0, k: 0 });
-  const act = typeof ctx.activity === "number" ? ctx.activity : null;
+  const act = actOf(data, today);
   const verbrauch = set.bmr + (act || 0);
   const pLeft = Math.max(0, set.protein - eaten.p); const kLeft = verbrauch - eaten.k;
-  const todayPlan = (data.plan[todayIdx] || []).map((s) => PDISC[s.disc].l + " " + s.detail).join(" · ") || "Ruhetag";
+  const lastW = (data.workouts || [])[data.workouts.length - 1] || null;
   const dash = (v, suf = "") => (v == null || v === "" ? "—" : v + suf);
 
   return (
@@ -916,8 +993,8 @@ function Home({ data }) {
         </div>
       </Card>
 
-      <Label style={{ margin: "2px 4px 8px", color: H.blue }}><Dumbbell size={12} style={{ verticalAlign: "-2px" }} /> Plan heute</Label>
-      <RecCard Icon={Dumbbell} c={H.blue} t={todayPlan} />
+      <Label style={{ margin: "2px 4px 8px", color: H.blue }}><Dumbbell size={12} style={{ verticalAlign: "-2px" }} /> Letztes Training</Label>
+      <RecCard Icon={Dumbbell} c={H.blue} t={lastW ? (dayLabel(lastW.date) === "Heute" ? "Heute" : fmtShort(lastW.date)) + ": " + lastW.name + " · " + lastW.exercises.length + " Übungen" : "Noch kein Workout geloggt."} />
 
       <Label style={{ margin: "14px 4px 8px", color: H.up }}><Utensils size={12} style={{ verticalAlign: "-2px" }} /> Ernährung</Label>
       <RecCard Icon={Utensils} c={H.blue} t={pLeft > 0 ? "Noch " + pLeft + " g Protein bis zu deinem Ziel (" + set.protein + " g)." : "Protein-Ziel erreicht 💪"} />
@@ -1019,9 +1096,16 @@ function Nav({ tab, setTab, active }) {
 }
 const Style = () => (<style>{`
   .scroll::-webkit-scrollbar{width:0}
+  .scroll{ -webkit-overflow-scrolling:touch; overscroll-behavior-y:contain; scroll-behavior:smooth; }
   .fld:focus{border-color:` + H.blue + `;background:#101015}
   .addset:hover{border-color:` + H.blue + `}
   .b{transition:width .6s cubic-bezier(.2,.8,.2,1)}
-  button,input{font-family:inherit}
-  @media (prefers-reduced-motion: reduce){.b,circle{transition:none}}
+  button,input,textarea{font-family:inherit}
+  *{ -webkit-tap-highlight-color:transparent; }
+  button{ touch-action:manipulation; }
+  .press{ transition:transform .12s ease, opacity .12s ease; }
+  .press:active{ transform:scale(.972); opacity:.85; }
+  .fade-in{ animation:fadeIn .22s ease both; }
+  @keyframes fadeIn{ from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:none} }
+  @media (prefers-reduced-motion: reduce){.b,circle,.press,.fade-in{transition:none;animation:none}}
 `}</style>);

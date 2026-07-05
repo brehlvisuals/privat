@@ -14,7 +14,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "log_meal",
     description:
-      "Trägt EIN einzelnes Lebensmittel in Felix' Ernährungstagebuch ein. WICHTIG: Bei zusammengesetzten Mahlzeiten (z.B. 'Brötchen mit Frischkäse und 5 Eiern') rufe das Tool MEHRFACH auf — ein Aufruf pro Lebensmittel (Brötchen; Frischkäse; Eier) —, damit jedes einzeln editierbar ist. Fasse NICHT alles zu einem Eintrag zusammen. Gib je Lebensmittel Menge + Einheit + die Nährwerte für DIESE Menge an. Schätze realistische Werte, wenn nötig. Nur aufrufen, wenn Felix mitteilt, dass er etwas gegessen hat.",
+      "Trägt EIN einzelnes Lebensmittel in Felix' Ernährungstagebuch ein (für heute). WICHTIG: Bei zusammengesetzten Mahlzeiten (z.B. 'Brötchen mit Frischkäse und 5 Eiern') rufe das Tool MEHRFACH auf — ein Aufruf pro Lebensmittel (Brötchen; Frischkäse; Eier) —, damit jedes einzeln editierbar ist. Fasse NICHT alles zu einem Eintrag zusammen. Gib je Lebensmittel Menge + Einheit + die Nährwerte für DIESE Menge an. Schätze realistische Werte, wenn nötig. Nur aufrufen, wenn Felix mitteilt, dass er etwas gegessen hat.",
     input_schema: {
       type: "object",
       properties: {
@@ -28,6 +28,39 @@ const TOOLS: Anthropic.Tool[] = [
         carbs: { type: "number", description: "Kohlenhydrate in Gramm für diese Menge" },
       },
       required: ["meal", "name", "kcal", "protein", "fat", "carbs"],
+    },
+  },
+  {
+    name: "create_food",
+    description:
+      "Legt ein FESTES Lebensmittel dauerhaft in Felix' Bibliothek an (taucht danach in der Ernährungs-Suchliste auf, zum späteren Wiederverwenden). Nutze das, wenn Felix sagt 'leg mal X als Lebensmittel an' oder ein Produkt/Rezept speichern will. Nährwerte IMMER pro Referenzmenge (per + unit) angeben, z.B. pro 100 g. Das trägt nichts ins Tagebuch ein — dafür ist log_meal da.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Name des Lebensmittels, z.B. 'Magerquark 20%'" },
+        brand: { type: "string", description: "Marke (optional)" },
+        base_unit: { type: "string", enum: ["g", "ml", "piece"], description: "Einheit der Referenzmenge" },
+        per: { type: "number", description: "Referenzmenge, meist 100 (= Werte pro 100 g/ml) oder 1 (pro Stück)" },
+        kcal: { type: "number", description: "Kalorien pro Referenzmenge" },
+        protein: { type: "number", description: "Protein (g) pro Referenzmenge" },
+        fat: { type: "number", description: "Fett (g) pro Referenzmenge" },
+        carbs: { type: "number", description: "Kohlenhydrate (g) pro Referenzmenge" },
+      },
+      required: ["name", "base_unit", "per", "kcal", "protein", "fat", "carbs"],
+    },
+  },
+  {
+    name: "adjust_activity",
+    description:
+      "Passt die Aktivitätsenergie (Aktiv-kcal aus Coros/Apple Health) in Performance OS manuell an — für den Fall, dass Coros falsch/unvollständig übertragen hat. mode 'add' addiert kcal drauf (auch negativ zum Abziehen), mode 'set' setzt einen absoluten Aktiv-kcal-Wert. Standard-Tag ist heute. Die Korrektur überlebt spätere Health-Syncs.",
+    input_schema: {
+      type: "object",
+      properties: {
+        mode: { type: "string", enum: ["add", "set"], description: "'add' = draufrechnen (z.B. +500), 'set' = absoluten Wert setzen" },
+        kcal: { type: "number", description: "kcal-Betrag (bei 'add' auch negativ möglich)" },
+        date: { type: "string", description: "Datum YYYY-MM-DD (optional, Standard heute)" },
+      },
+      required: ["mode", "kcal"],
     },
   },
 ];
