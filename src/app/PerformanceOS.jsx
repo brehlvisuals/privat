@@ -178,7 +178,7 @@ function buildCoachContext(data) {
   const w7 = (data.workouts || []).filter((w) => days7.includes(w.date)).length;
   const L = [];
   L.push("Datum: " + new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" }));
-  L.push("Ziele: Grundumsatz " + s.bmr + " kcal. Protein " + s.protein + " g (fix), Fett " + s.fat + " g (fix). Kohlenhydrate " + (s.carbs + Math.round((act || 0) / 4)) + " g (Basis " + s.carbs + " g + ¼ g je Aktiv-kcal, steigt also mit der Aktivität).");
+  L.push("Ziele: Grundumsatz " + s.bmr + " kcal. Protein " + s.protein + " g (fix), Fett " + s.fat + " g (fix). Kohlenhydrate " + Math.max(0, Math.round((verbrauch - s.protein * 4 - s.fat * 9) / 4)) + " g = restliche Kalorien nach Protein/Fett (steigt automatisch mit der Aktivität, passt exakt zum kcal-Verbrauch von " + verbrauch + " kcal).");
   L.push("Heute gegessen: " + eaten.k + " kcal (" + eaten.p + "g Protein, " + eaten.f + "g Fett, " + eaten.c + "g KH).");
   L.push("Mahlzeiten heute: " + (meals.length ? meals.join(" | ") : "noch nichts geloggt"));
   L.push("Aktivitätsenergie heute: " + (act == null ? "noch nicht synchronisiert" : act + " kcal") + (adjToday ? " (davon " + (adjToday > 0 ? "+" : "") + adjToday + " manuell korrigiert)" : "") + ". Gesamtverbrauch: " + verbrauch + " kcal. Bilanz: " + (eaten.k - verbrauch) + " kcal.");
@@ -623,9 +623,9 @@ function Food({ data, commit }) {
   const sum = all.reduce((a, m) => ({ p: a.p + m.p, f: a.f + m.f, c: a.c + m.c, k: a.k + m.k }), { p: 0, f: 0, c: 0, k: 0 });
   const act = actOf(data, date);
   const verbrauch = set.bmr + (act || 0); const bilanz = sum.k - verbrauch;
-  // Protein & Fett sind feste Ziele; Kohlenhydrate wachsen mit der Aktivität (≈ ¼ g je Aktiv-kcal).
-  const carbBonus = Math.round((act || 0) / 4);
-  const carbTarget = set.carbs + carbBonus;
+  // Protein & Fett sind feste Ziele; Kohlenhydrate = restliche Kalorien / 4 (wachsen so
+  // automatisch mit der Aktivität UND passen exakt zum kcal-Budget).
+  const carbTarget = Math.max(0, Math.round((verbrauch - set.protein * 4 - set.fat * 9) / 4));
 
   const setDay = (next) => commit({ ...data, nutrition: { ...data.nutrition, [date]: next } });
   const addItem = (meal, item) => setDay({ ...day, [meal]: [...(day[meal] || []), item] });
@@ -673,7 +673,7 @@ function Food({ data, commit }) {
         <Card style={{ marginBottom: 14 }}>
           <Macro label="Protein" v={sum.p} t={set.protein} color={H.blue} />
           <Macro label="Fett (min.)" v={sum.f} t={set.fat} color={H.amber} />
-          <Macro label={carbBonus > 0 ? "Kohlenhydrate (+" + carbBonus + " Aktivität)" : "Kohlenhydrate"} v={sum.c} t={carbTarget} color={H.up} />
+          <Macro label="Kohlenhydrate (Rest-kcal)" v={sum.c} t={carbTarget} color={H.up} />
         </Card>
 
         {MEALS.map(([k, label]) => { const items = day[k] || []; const ms = items.reduce((a, m) => ({ p: a.p + m.p, f: a.f + m.f, c: a.c + m.c, k: a.k + m.k }), { p: 0, f: 0, c: 0, k: 0 }); return (
@@ -718,8 +718,10 @@ function NutSettings({ set, onSave, close }) {
     <div style={{ fontSize: 11.5, color: H.faint, margin: "-6px 0 14px" }}>Aktivitätsenergie kommt automatisch aus Coros und wird oben addiert.</div>
     <Field label="Protein-Ziel (g)"><input value={s.protein} onChange={(e) => f("protein", e.target.value)} inputMode="numeric" className="fld" style={sheetInput} /></Field>
     <Field label="Fett-Ziel / Minimum (g)"><input value={s.fat} onChange={(e) => f("fat", e.target.value)} inputMode="numeric" className="fld" style={sheetInput} /></Field>
-    <Field label="Kohlenhydrate-Basis (g)"><input value={s.carbs} onChange={(e) => f("carbs", e.target.value)} inputMode="numeric" className="fld" style={sheetInput} /></Field>
-    <div style={{ fontSize: 11.5, color: H.faint, margin: "-6px 0 14px" }}>Kohlenhydrate steigen automatisch mit der Aktivität: + ¼ g je Aktiv-kcal (Protein & Fett bleiben fix).</div>
+    <div style={{ fontSize: 12, color: H.sub, margin: "2px 0 4px", background: H.bg2, borderRadius: 11, padding: "11px 13px" }}>
+      <b style={{ color: H.text }}>Kohlenhydrate: automatisch</b><br />
+      KH = übrige Kalorien nach Protein & Fett, geteilt durch 4. Steigen so von selbst mit der Aktivität und passen immer exakt zu deinem kcal-Budget.
+    </div>
     <button onClick={() => onSave(s)} style={{ width: "100%", marginTop: 6, padding: 14, borderRadius: 13, border: "none", background: H.blue, color: "#fff", fontWeight: 750, fontSize: 15, cursor: "pointer" }}>Speichern</button>
     <form action="/auth/signout" method="post" style={{ marginTop: 10 }}>
       <button type="submit" style={{ width: "100%", padding: 12, borderRadius: 13, border: "1px solid " + H.line, background: "transparent", color: H.sub, fontWeight: 650, fontSize: 13.5, cursor: "pointer" }}>Abmelden</button>
