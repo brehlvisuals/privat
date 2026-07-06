@@ -319,15 +319,23 @@ function Coach({ msgs, setMsgs, close, data, commit }) {
     reader.readAsDataURL(file); e.target.value = "";
   };
 
-  const toggleDictation = () => {
+  const toggleDictation = async () => {
     const SR = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
-    if (!SR) { alert("Diktat wird auf diesem Gerät nicht unterstützt — nutze das Mikro auf der Tastatur."); return; }
-    if (rec && recogRef.current) { recogRef.current.stop(); return; }
+    if (!SR) { alert("Sprach-Diktat wird in der installierten App auf dem iPhone leider nicht unterstützt.\n\nTipp: Tippe ins Textfeld und nutze das 🎤-Symbol direkt auf der iOS-Tastatur — das diktiert genauso in den Chat."); return; }
+    if (rec && recogRef.current) { try { recogRef.current.stop(); } catch (e) {} return; }
+    // Mikrofon-Berechtigung vorab anstoßen (hilft in einigen WebViews/PWAs).
+    try { if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) { const s = await navigator.mediaDevices.getUserMedia({ audio: true }); s.getTracks().forEach((t) => t.stop()); } } catch (e) {}
+    const base = text;
     const r = new SR(); r.lang = "de-DE"; r.interimResults = true; r.continuous = false;
-    let final = "";
-    r.onresult = (ev) => { let interim = ""; for (let i = ev.resultIndex; i < ev.results.length; i++) { const tr = ev.results[i]; if (tr.isFinal) final += tr[0].transcript; else interim += tr[0].transcript; } setText((prev) => (final || interim) ? (prev.replace(/\s*$/, "") + " " + (final || interim)).trim() : prev); };
-    r.onerror = () => setRec(false); r.onend = () => { setRec(false); recogRef.current = null; };
-    recogRef.current = r; setRec(true); try { r.start(); } catch (e) { setRec(false); }
+    r.onresult = (ev) => { let s = ""; for (let i = 0; i < ev.results.length; i++) s += ev.results[i][0].transcript; setText((base ? base.replace(/\s*$/, "") + " " : "") + s); };
+    r.onerror = (ev) => {
+      setRec(false); recogRef.current = null;
+      const err = ev && ev.error;
+      if (err === "not-allowed" || err === "service-not-allowed") alert("Mikrofon-Zugriff fehlt. Erlaube ihn in den iPhone-Einstellungen — oder nutze das 🎤 auf der Tastatur.");
+      else if (err && err !== "no-speech" && err !== "aborted") alert("Diktat gerade nicht möglich (" + err + "). Nutze sonst das 🎤 auf der iOS-Tastatur.");
+    };
+    r.onend = () => { setRec(false); recogRef.current = null; };
+    recogRef.current = r; setRec(true); try { r.start(); } catch (e) { setRec(false); recogRef.current = null; }
   };
 
   return (
