@@ -304,8 +304,11 @@ function Coach({ msgs, setMsgs, close, data, commit }) {
         const res = await fetch("/api/coach", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: convo.map((m) => ({ role: m.role, content: m.content })), system: sys, tools: true }) }).then((r) => r.json());
         if (!res || !res.content || res.error) throw new Error(res && res.error ? res.error : "bad response");
         convo = [...convo, { role: "assistant", content: res.content }]; setMsgs(convo);
-        if (res.stop_reason === "tool_use") {
-          const toolUses = res.content.filter((b) => b.type === "tool_use");
+        // Tools ausführen, sobald Tool-Blöcke da sind — auch wenn stop_reason
+        // "max_tokens" ist (bei vielen Einträgen wird das Limit sonst erreicht,
+        // die Aktionen liefen dann nie).
+        const toolUses = res.content.filter((b) => b.type === "tool_use");
+        if (toolUses.length) {
           const { results, nextData } = await applyActions(toolUses, work); work = nextData;
           convo = [...convo, { role: "user", content: results.map((r) => ({ type: "tool_result", tool_use_id: r.id, content: r.content })) }]; setMsgs(convo);
           continue;

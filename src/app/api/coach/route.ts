@@ -8,7 +8,7 @@ import Anthropic from "@anthropic-ai/sdk";
 export const runtime = "nodejs";
 
 const MODEL = "claude-sonnet-5";
-const MAX_TOKENS = 1200;
+const MAX_TOKENS = 4096;
 
 const TOOLS: Anthropic.Tool[] = [
   {
