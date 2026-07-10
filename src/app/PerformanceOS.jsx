@@ -292,13 +292,17 @@ function Coach({ msgs, setMsgs, close, data, commit }) {
     const userContent = img
       ? [...(t ? [{ type: "text", text: t }] : [{ type: "text", text: "Was ist das? Schätze die Nährwerte." }]), { type: "image", source: { type: "base64", media_type: img.media_type, data: img.data } }]
       : t;
-    let convo = [...msgs, { role: "user", content: userContent }]; setMsgs(convo); setText(""); setImg(null); setBusy(true);
+    // Sauberer Ausgangs-Verlauf (nur bis zur neuen User-Nachricht). Bei einem Fehler
+    // fallen wir hierauf zurück, damit kein unvollständiges Tool-Paar hängen bleibt
+    // und die Folgeanfragen vergiftet.
+    const baseMsgs = [...msgs, { role: "user", content: userContent }];
+    let convo = baseMsgs; setMsgs(convo); setText(""); setImg(null); setBusy(true);
     let work = data;
     const sys = COACH_SYS + "\n\n## AKTUELLE DATEN\n" + buildCoachContext(data);
     try {
       for (let iter = 0; iter < 5; iter++) {
         const res = await fetch("/api/coach", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: convo.map((m) => ({ role: m.role, content: m.content })), system: sys, tools: true }) }).then((r) => r.json());
-        if (!res || !res.content) throw new Error("bad response");
+        if (!res || !res.content || res.error) throw new Error(res && res.error ? res.error : "bad response");
         convo = [...convo, { role: "assistant", content: res.content }]; setMsgs(convo);
         if (res.stop_reason === "tool_use") {
           const toolUses = res.content.filter((b) => b.type === "tool_use");
@@ -308,7 +312,10 @@ function Coach({ msgs, setMsgs, close, data, commit }) {
         }
         break;
       }
-    } catch (e) { setMsgs([...convo, { role: "assistant", content: "Hm, da ging was schief. Probier's nochmal." }]); }
+    } catch (e) {
+      // Kaputten (unvollständigen) Tool-Verlauf verwerfen, nur die User-Nachricht + Hinweis behalten.
+      setMsgs([...baseMsgs, { role: "assistant", content: "Hm, da ging was schief. Probier's nochmal." }]);
+    }
     setBusy(false);
   };
 

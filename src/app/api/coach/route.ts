@@ -67,6 +67,52 @@ const TOOLS: Anthropic.Tool[] = [
 
 type Role = "user" | "assistant";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Block = any;
+type Msg = { role: Role; content: unknown };
+
+// Repariert Tool-Use/Tool-Result-Paarung, damit die Anthropic-API nie ein
+// „tool_use ohne folgendes tool_result" (oder umgekehrt) sieht.
+function sanitizeToolPairs(msgs: Msg[]): Msg[] {
+  const out: Msg[] = [];
+  for (let i = 0; i < msgs.length; i++) {
+    const m = msgs[i];
+    // Assistant mit tool_use: nur behalten, wenn die NÄCHSTE Nachricht alle
+    // passenden tool_result-Blöcke enthält. Sonst tool_use verwerfen (Text behalten).
+    if (m.role === "assistant" && Array.isArray(m.content)) {
+      const ids = (m.content as Block[]).filter((b) => b && b.type === "tool_use").map((b) => b.id);
+      if (ids.length) {
+        const next = msgs[i + 1];
+        const resIds: string[] = next && next.role === "user" && Array.isArray(next.content)
+          ? (next.content as Block[]).filter((b) => b && b.type === "tool_result").map((b) => b.tool_use_id)
+          : [];
+        const ok = ids.every((id) => resIds.includes(id));
+        if (!ok) {
+          const text = (m.content as Block[]).filter((b) => b && b.type === "text" && String(b.text || "").trim());
+          if (text.length) out.push({ role: "assistant", content: text });
+          continue; // nacktes tool_use verwerfen
+        }
+      }
+    }
+    // User mit tool_result: nur behalten, wenn die zuletzt behaltene Nachricht ein
+    // Assistant mit passenden tool_use-Ids ist. Verwaiste tool_results verwerfen.
+    if (m.role === "user" && Array.isArray(m.content) && (m.content as Block[]).some((b) => b && b.type === "tool_result")) {
+      const prev = out[out.length - 1];
+      const prevIds: string[] = prev && prev.role === "assistant" && Array.isArray(prev.content)
+        ? (prev.content as Block[]).filter((b) => b && b.type === "tool_use").map((b) => b.id)
+        : [];
+      const kept = (m.content as Block[]).filter((b) => !(b && b.type === "tool_result") || prevIds.includes(b.tool_use_id));
+      const nonEmpty = kept.filter((b) => !(b && b.type === "text" && !String(b.text || "").trim()));
+      if (nonEmpty.length) out.push({ role: "user", content: nonEmpty });
+      continue;
+    }
+    out.push(m);
+  }
+  // Führende Assistant-Nachrichten sind bei der API unzulässig → abschneiden.
+  while (out.length && out[0].role === "assistant") out.shift();
+  return out;
+}
+
 export async function POST(request: Request) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) {
@@ -93,7 +139,12 @@ export async function POST(request: Request) {
       clean.push({ role: m.role, content: m.content });
     }
   }
-  if (clean.length === 0) {
+
+  // Verlauf reparieren: jeder tool_use MUSS direkt danach ein passendes tool_result haben.
+  // Bricht ein Tool-Loop im Client ab, bleibt sonst ein „nacktes" tool_use hängen und
+  // die API lehnt ALLE Folgeanfragen ab. Wir entfernen unvollständige Tool-Paare.
+  const sanitized = sanitizeToolPairs(clean);
+  if (sanitized.length === 0) {
     return Response.json({ error: "Keine gültigen Nachrichten." }, { status: 400 });
   }
 
@@ -106,7 +157,7 @@ export async function POST(request: Request) {
       ...(typeof system === "string" && system ? { system } : {}),
       ...(body.tools ? { tools: TOOLS } : {}),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      messages: clean as any,
+      messages: sanitized as any,
     });
 
     // Normalisierte Blöcke zurückgeben (text + tool_use), damit der Client
