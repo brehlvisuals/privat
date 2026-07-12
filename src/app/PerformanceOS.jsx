@@ -818,13 +818,28 @@ function AddFood({ mealLabel, onAdd, close, data, commit }) {
   const [text, setText] = useState(""); const [aiBusy, setAiBusy] = useState(false); const [err, setErr] = useState("");
   const [scanBusy, setScanBusy] = useState(false);
   const [remote, setRemote] = useState([]); const [searching, setSearching] = useState(false);
+  const [libLoading, setLibLoading] = useState(true);
 
-  useEffect(() => { (async () => {
-    try { const { data: { user } } = await supabase.auth.getUser(); if (!user) return;
-      const { data } = await supabase.from("foods").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(300);
-      setLibrary(data || []);
-    } catch (e) {}
-  })(); }, []);
+  // Bibliothek laden — robust: wiederholt, falls die Session beim Öffnen noch
+  // nicht bereit ist (sonst blieb die Liste manchmal leer).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      for (let attempt = 0; attempt < 4 && !cancelled; attempt++) {
+        let uid = userId; // Modul-Global aus load()
+        if (!uid) { try { const { data: { user } } = await supabase.auth.getUser(); uid = user ? user.id : null; } catch (e) {} }
+        if (uid) {
+          try {
+            const { data, error } = await supabase.from("foods").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(500);
+            if (!cancelled && !error && Array.isArray(data)) { setLibrary(data); setLibLoading(false); return; }
+          } catch (e) {}
+        }
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      if (!cancelled) setLibLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Online-Datenbank (Open Food Facts) mitdurchsuchen — debounced.
   useEffect(() => {
@@ -908,6 +923,7 @@ function AddFood({ mealLabel, onAdd, close, data, commit }) {
       <div style={{ position: "relative", marginBottom: 10 }}><Search size={15} color={H.faint} style={{ position: "absolute", left: 12, top: 12 }} />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Lebensmittel suchen" className="fld" style={{ ...sheetInput, paddingLeft: 34 }} /></div>
       <div style={{ maxHeight: 300, overflowY: "auto" }} className="scroll">
+        {libLoading && library.length === 0 && <div style={{ fontSize: 13, color: H.faint, textAlign: "center", padding: "16px 0" }}>Lade deine Lebensmittel …</div>}
         {results.map((f, i) => (
           <div key={(f.id || f.name) + i} style={{ display: "flex", alignItems: "stretch", background: H.bg2, borderRadius: 11, marginBottom: 7, overflow: "hidden" }}>
             <button onClick={() => pick(f)} style={{ all: "unset", cursor: "pointer", flex: 1, boxSizing: "border-box", padding: "11px 13px", minWidth: 0 }}>
