@@ -157,37 +157,74 @@ async function estimateFood(text) {
   const o = JSON.parse(out.replace(/```json|```/g, "").trim());
   return { n: o.n, p: Math.round(o.p), f: Math.round(o.f), c: Math.round(o.c), k: Math.round(o.k), ai: true };
 }
-const COACH_SYS = "Du bist der KI-Coach in Felix' privatem Performance OS. Felix ist pescetarischer Ironman-Triathlet, 26, 186 cm, 83 kg. Er trainiert Schwimmen, Rad, Laufen, Kraft, Calisthenics. Du hast Zugriff auf seine aktuellen App-Daten (siehe Abschnitt AKTUELLE DATEN) — nutze sie und antworte konkret und datenbasiert. Erfinde keine Werte; wenn etwas fehlt (z.B. Aktivität noch nicht von Coros synchronisiert), sag das ehrlich. Sag NIEMALS, dass du kein Tracking-System hast oder eine andere App nötig wäre.\n\nDu kannst aktiv in der App handeln über Tools:\n- log_meal: Gegessenes ins Tagebuch eintragen. Bei zusammengesetzten Mahlzeiten JEDE Zutat als EIGENEN log_meal-Aufruf (nicht zusammenfassen), je mit Menge/Einheit + eigenen Nährwerten.\n- create_food: ein festes Lebensmittel dauerhaft in Felix' Bibliothek anlegen (wenn er etwas speichern/anlegen will), Nährwerte pro Referenzmenge.\n- adjust_activity: die Aktiv-kcal (Coros/Apple Health) manuell korrigieren, wenn Coros falsch übertragen hat — z.B. 'addiere 500 kcal' → mode 'add', kcal 500.\nWenn Felix ein Training beschreibt oder bewertet haben will, analysiere seine geloggten Workouts (siehe Kontext) konkret: Volumen, Progression, Balance, Regeneration. Wenn du ein Tool sinnvoll einsetzen kannst, TU es, statt nur zu erklären. Antworte kurz, konkret und auf Deutsch in der Du-Form. Kein Ersatz für Arzt/Coach bei medizinischen Fragen.";
+const COACH_SYS = "Du bist der KI-Coach & Datenanalyst in Felix' privatem Performance OS. Felix ist pescetarischer Ironman-Triathlet, 26, 186 cm, ~83 kg. Er trainiert Schwimmen, Rad, Laufen, Kraft, Calisthenics.\n\nWICHTIG: Im Abschnitt AKTUELLE DATEN bekommst du seinen ECHTEN, VOLLSTÄNDIGEN Verlauf: Gewichtstrend über Wochen, tägliche Health-Metriken (Aktiv-kcal, Schlaf, Ruhepuls, HRV, Gewicht) der letzten ~3 Wochen, Ernährungshistorie der letzten 14 Tage (kcal/Protein/Bilanz) und die letzten Trainings mit Sätzen/Volumen. NUTZE diese Daten aktiv für tiefe, konkrete Auswertungen — Trends, Muster, Zusammenhänge (z.B. Gewicht vs. Kalorienbilanz, Schlaf/HRV vs. Trainingsleistung, Volumen-Progression). Behaupte NIEMALS, du hättest keine Historie oder keinen Zugriff — schau IMMER zuerst in die AKTUELLE DATEN, bevor du das sagst. Wenn ein konkreter Wert wirklich fehlt (z.B. '—'), benenne genau welcher.\n\nDu kannst aktiv in der App handeln über Tools:\n- log_meal: Gegessenes ins Tagebuch eintragen — für heute ODER rückwirkend (Feld 'date', YYYY-MM-DD, z.B. gestern). Bei zusammengesetzten Mahlzeiten JEDE Zutat als EIGENEN log_meal-Aufruf (nicht zusammenfassen), je mit Menge/Einheit + eigenen Nährwerten.\n- create_food: ein festes Lebensmittel dauerhaft in Felix' Bibliothek anlegen, Nährwerte pro Referenzmenge.\n- adjust_activity: Aktiv-kcal (Coros/Apple Health) manuell korrigieren, auch rückwirkend per 'date' — z.B. 'addiere 500 kcal' → mode 'add', kcal 500.\nWenn du ein Tool sinnvoll einsetzen kannst, TU es direkt, statt Ausreden zu machen. Sei ein ehrlicher, fordernder Coach: klare Einordnung, konkrete Zahlen, umsetzbare Empfehlungen. Antworte auf Deutsch in der Du-Form. Kein Ersatz für Arzt bei medizinischen Fragen.";
 
-// Baut aus dem echten App-Zustand einen kompakten Live-Kontext für den Coach.
+// Baut aus dem echten App-Zustand einen REICHEN Live-Kontext für den Coach:
+// Ziele, Heute-Detail, Gewichtsverlauf, Health-Metriken über Wochen,
+// Ernährungshistorie und alle Trainings — damit tiefe Auswertungen möglich sind.
 function buildCoachContext(data) {
-  const s = data.settings; const ctx = data.context[today] || {}; const nut = data.nutrition[today] || emptyDay();
-  const eaten = [].concat(...MEALS.map(([k]) => nut[k] || [])).reduce((a, m) => ({ p: a.p + m.p, f: a.f + m.f, c: a.c + m.c, k: a.k + m.k }), { p: 0, f: 0, c: 0, k: 0 });
+  const s = data.settings;
+  const dayTot = (nn) => [].concat(...MEALS.map(([k]) => (nn && nn[k]) || [])).reduce((a, m) => ({ p: a.p + m.p, f: a.f + m.f, c: a.c + m.c, k: a.k + m.k }), { p: 0, f: 0, c: 0, k: 0 });
+  const ctx = data.context[today] || {};
+  const nut = data.nutrition[today] || emptyDay();
+  const eaten = dayTot(nut);
   const meals = MEALS.map(([k, label]) => { const it = nut[k] || []; return it.length ? label + ": " + it.map((m) => m.n + " (" + m.k + " kcal, " + m.p + "g P)").join(", ") : null; }).filter(Boolean);
   const act = actOf(data, today);
-  const adjToday = ((data.activityAdj || {})[today]) || 0;
   const verbrauch = s.bmr + (act || 0);
-  const recentW = [...(data.workouts || [])].slice(-5).reverse().map((w) => {
-    const sets = w.exercises.reduce((a, e) => a + e.sets.length, 0);
-    const vol = w.exercises.reduce((a, e) => a + e.sets.reduce((ss, x) => ss + x.w * x.r, 0), 0);
-    const exs = w.exercises.map((e) => e.name + " (" + e.sets.map((x) => x.w + "×" + x.r).join(", ") + ")").join("; ");
-    return fmtShort(w.date) + ' "' + w.name + '" · ' + w.durationMin + " min, " + sets + " Sätze, " + (vol / 1000).toFixed(1) + " t — " + exs;
-  }).join("\n  ") || "keine geloggt";
-  const days7 = Array.from({ length: 7 }, (_, i) => dstr(i));
-  const acts7 = days7.map((d) => actOf(data, d)).filter((v) => typeof v === "number");
-  const w7 = (data.workouts || []).filter((w) => days7.includes(w.date)).length;
+  const carbGoal = Math.max(0, Math.round((verbrauch - s.protein * 4 - s.fat * 9) / 4));
+  const num = (v) => (v == null ? "—" : v);
   const L = [];
-  L.push("Datum: " + new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" }));
-  L.push("Ziele: Grundumsatz " + s.bmr + " kcal. Protein " + s.protein + " g (fix), Fett " + s.fat + " g (fix). Kohlenhydrate " + Math.max(0, Math.round((verbrauch - s.protein * 4 - s.fat * 9) / 4)) + " g = restliche Kalorien nach Protein/Fett (steigt automatisch mit der Aktivität, passt exakt zum kcal-Verbrauch von " + verbrauch + " kcal).");
-  L.push("Heute gegessen: " + eaten.k + " kcal (" + eaten.p + "g Protein, " + eaten.f + "g Fett, " + eaten.c + "g KH).");
-  L.push("Mahlzeiten heute: " + (meals.length ? meals.join(" | ") : "noch nichts geloggt"));
-  L.push("Aktivitätsenergie heute: " + (act == null ? "noch nicht synchronisiert" : act + " kcal") + (adjToday ? " (davon " + (adjToday > 0 ? "+" : "") + adjToday + " manuell korrigiert)" : "") + ". Gesamtverbrauch: " + verbrauch + " kcal. Bilanz: " + (eaten.k - verbrauch) + " kcal.");
-  L.push("Noch offen: " + Math.max(0, s.protein - eaten.p) + " g Protein, " + (verbrauch - eaten.k) + " kcal bis zum Verbrauch.");
+
+  L.push("== HEUTE (" + today + ", " + new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" }) + ") ==");
+  L.push("Ziele: Grundumsatz " + s.bmr + " kcal, Protein " + s.protein + "g (fix), Fett " + s.fat + "g (fix), Kohlenhydrate = Rest-Kalorien/4 (heute Ziel " + carbGoal + "g).");
+  L.push("Gegessen: " + eaten.k + " kcal (" + eaten.p + "g P, " + eaten.f + "g F, " + eaten.c + "g KH). Mahlzeiten: " + (meals.length ? meals.join(" | ") : "noch nichts"));
+  L.push("Aktiv-kcal: " + num(act) + ", Gesamtverbrauch " + verbrauch + " kcal, Bilanz " + (eaten.k - verbrauch) + " kcal. Noch offen: " + Math.max(0, s.protein - eaten.p) + "g Protein, " + (verbrauch - eaten.k) + " kcal.");
   if (ctx.sleep != null) L.push("Schlaf letzte Nacht: " + ctx.sleep + " h.");
-  if (ctx.rhf != null) L.push("Ruhepuls: " + ctx.rhf + " bpm.");
-  if (ctx.weight != null) L.push("Gewicht: " + ctx.weight + " kg.");
-  L.push("Letzte 7 Tage: " + w7 + " Workouts, Aktiv-Energie-Summe " + (acts7.reduce((a, b) => a + b, 0) || 0) + " kcal.");
-  L.push("Letzte Workouts (Details):\n  " + recentW);
+  if (ctx.rhf != null) L.push("Ruhepuls: " + ctx.rhf + " bpm." + (ctx.hrv != null ? " HRV: " + ctx.hrv + " ms." : ""));
+
+  // Gewichtsverlauf (alle Messungen chronologisch)
+  const wDates = Object.keys(data.context || {}).filter((dd) => typeof (data.context[dd] || {}).weight === "number").sort();
+  L.push("\n== GEWICHTSVERLAUF ==");
+  if (wDates.length) {
+    L.push(wDates.map((dd) => fmtShort(dd) + ": " + data.context[dd].weight + " kg").join("  |  "));
+    const first = data.context[wDates[0]].weight, last = data.context[wDates[wDates.length - 1]].weight;
+    const d = Math.round((last - first) * 10) / 10;
+    L.push("Trend: " + first + " → " + last + " kg (Δ " + (d >= 0 ? "+" : "") + d + " kg über " + wDates.length + " Messungen).");
+  } else L.push("Noch keine Gewichtsdaten synchronisiert.");
+
+  // Tages-Metriken der letzten 21 Tage
+  L.push("\n== HEALTH-METRIKEN (Aktiv-kcal / Schlaf h / Ruhepuls / HRV / Gewicht) ==");
+  const dayLines = [];
+  for (let i = 0; i <= 21; i++) {
+    const dd = dstr(i); const c = data.context[dd]; const a = actOf(data, dd);
+    if (!c && a == null) continue;
+    dayLines.push(fmtShort(dd) + ": Akt " + num(a) + ", Schlaf " + num(c && c.sleep) + ", RHF " + num(c && c.rhf) + ", HRV " + num(c && c.hrv) + ", Gew " + num(c && c.weight));
+  }
+  L.push(dayLines.length ? dayLines.join("\n") : "keine Health-Daten");
+
+  // Ernährungshistorie der letzten 14 Tage
+  L.push("\n== ERNÄHRUNG letzte 14 Tage (kcal / Protein / Bilanz) ==");
+  const nutLines = [];
+  for (let i = 1; i <= 14; i++) {
+    const dd = dstr(i); const nn = data.nutrition[dd]; if (!nn) continue;
+    const tot = dayTot(nn); if (!tot.k) continue;
+    const vb = s.bmr + (actOf(data, dd) || 0);
+    nutLines.push(fmtShort(dd) + ": " + tot.k + " kcal, " + tot.p + "g P, Bilanz " + (tot.k - vb) + " kcal");
+  }
+  L.push(nutLines.length ? nutLines.join("\n") : "keine älteren Einträge");
+
+  // Trainings (letzte 12, mit Details)
+  L.push("\n== TRAININGS (letzte 12) ==");
+  const ws = [...(data.workouts || [])].slice(-12).reverse();
+  if (ws.length) {
+    L.push(ws.map((w) => {
+      const sets = w.exercises.reduce((a, e) => a + e.sets.length, 0);
+      const vol = w.exercises.reduce((a, e) => a + e.sets.reduce((ss, x) => ss + x.w * x.r, 0), 0);
+      const exs = w.exercises.map((e) => e.name + " (" + e.sets.map((x) => x.w + "×" + x.r).join(",") + ")").join("; ");
+      return fmtShort(w.date) + ' "' + w.name + '": ' + w.durationMin + " min, " + sets + " Sätze, " + (vol / 1000).toFixed(1) + " t — " + exs;
+    }).join("\n"));
+  } else L.push("keine geloggt");
+
   return L.join("\n");
 }
 
@@ -260,14 +297,15 @@ function Coach({ msgs, setMsgs, close, data, commit }) {
       const inp = b.input || {};
       try {
         if (b.name === "log_meal") {
+          const mday = /^\d{4}-\d{2}-\d{2}$/.test(inp.date || "") ? inp.date : today;
           const meal = COACH_MEALS[inp.meal] ? inp.meal : "snack";
           const amt = dec(inp.amount) || 1; const unit = inp.unit || "Portion";
           const base = { k: Math.round(dec(inp.kcal)), p: Math.round(dec(inp.protein)), f: Math.round(dec(inp.fat)), c: Math.round(dec(inp.carbs)) };
           const label = String(inp.name || "Mahlzeit") + (inp.amount ? " · " + amt + " " + (UNIT_LABEL[unit] || unit) : "");
           const e = { n: label, k: base.k, p: base.p, f: base.f, c: base.c, ai: true, amount: amt, unit, per: amt, base };
-          const day = d.nutrition[today] || emptyDay();
-          d = { ...d, nutrition: { ...d.nutrition, [today]: { ...day, [meal]: [...(day[meal] || []), e] } } };
-          results.push({ id: b.id, content: "Eingetragen: " + label + " (" + base.k + " kcal, " + base.p + "g P)." });
+          const day = d.nutrition[mday] || emptyDay();
+          d = { ...d, nutrition: { ...d.nutrition, [mday]: { ...day, [meal]: [...(day[meal] || []), e] } } };
+          results.push({ id: b.id, content: "Eingetragen für " + (mday === today ? "heute" : mday) + ": " + label + " (" + base.k + " kcal, " + base.p + "g P)." });
         } else if (b.name === "adjust_activity") {
           const date = /^\d{4}-\d{2}-\d{2}$/.test(inp.date || "") ? inp.date : today;
           const kcal = Math.round(dec(inp.kcal));

@@ -14,7 +14,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "log_meal",
     description:
-      "Trägt EIN einzelnes Lebensmittel in Felix' Ernährungstagebuch ein (für heute). WICHTIG: Bei zusammengesetzten Mahlzeiten (z.B. 'Brötchen mit Frischkäse und 5 Eiern') rufe das Tool MEHRFACH auf — ein Aufruf pro Lebensmittel (Brötchen; Frischkäse; Eier) —, damit jedes einzeln editierbar ist. Fasse NICHT alles zu einem Eintrag zusammen. Gib je Lebensmittel Menge + Einheit + die Nährwerte für DIESE Menge an. Schätze realistische Werte, wenn nötig. Nur aufrufen, wenn Felix mitteilt, dass er etwas gegessen hat.",
+      "Trägt EIN einzelnes Lebensmittel in Felix' Ernährungstagebuch ein. Standard-Tag ist heute; mit 'date' (YYYY-MM-DD) auch rückwirkend für gestern/frühere Tage. WICHTIG: Bei zusammengesetzten Mahlzeiten (z.B. 'Brötchen mit Frischkäse und 5 Eiern') rufe das Tool MEHRFACH auf — ein Aufruf pro Lebensmittel (Brötchen; Frischkäse; Eier) —, damit jedes einzeln editierbar ist. Fasse NICHT alles zu einem Eintrag zusammen. Gib je Lebensmittel Menge + Einheit + die Nährwerte für DIESE Menge an. Schätze realistische Werte, wenn nötig. Nur aufrufen, wenn Felix mitteilt, dass er etwas gegessen hat.",
     input_schema: {
       type: "object",
       properties: {
@@ -26,6 +26,7 @@ const TOOLS: Anthropic.Tool[] = [
         protein: { type: "number", description: "Protein in Gramm für diese Menge" },
         fat: { type: "number", description: "Fett in Gramm für diese Menge" },
         carbs: { type: "number", description: "Kohlenhydrate in Gramm für diese Menge" },
+        date: { type: "string", description: "Datum YYYY-MM-DD (optional, Standard heute). Für rückwirkendes Eintragen, z.B. gestern." },
       },
       required: ["meal", "name", "kcal", "protein", "fat", "carbs"],
     },
