@@ -24,6 +24,14 @@ const dstr = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d
 const today = dstr(0);
 const fmtShort = (s) => new Date(s).toLocaleDateString("de-DE", { day: "2-digit", month: "short" });
 const dayLabel = (s) => s === today ? "Heute" : s === dstr(1) ? "Gestern" : s === dstr(-1) ? "Morgen" : new Date(s).toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
+const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
+// HRV eines Tages: manueller Eintrag (hrvLog) hat Vorrang, sonst aus Health (context).
+const hrvOf = (data, date) => {
+  const m = (data.hrvLog || {})[date];
+  if (typeof m === "number") return m;
+  const c = (data.context && data.context[date]) || {};
+  return typeof c.hrv === "number" ? c.hrv : null;
+};
 // Aktivitäts-kcal eines Tages inkl. manueller Korrektur (activityAdj). null wenn gar nichts da.
 const actOf = (data, date) => {
   const base = ((data.context && data.context[date]) || {}).activity;
@@ -81,6 +89,7 @@ const seed = () => ({
   plan: {},
   hiddenFavs: [], // ausgeblendete Beispiel-Lebensmittel (FAVS)
   activityAdj: {}, // manuelle Aktivitäts-kcal-Korrektur pro Datum (überlebt Health-Sync)
+  hrvLog: {}, // manuell eingetragene HRV pro Datum (Coros exportiert sie nicht)
 });
 let MEM = null;
 let userId = null;
@@ -215,7 +224,7 @@ function buildCoachContext(data) {
   const yEntries = entryLines(dstr(1));
   if (yEntries.length) { L.push("Einträge gestern (" + dstr(1) + "):"); L.push(yEntries.join("\n")); }
   if (ctx.sleep != null) L.push("Schlaf letzte Nacht: " + ctx.sleep + " h.");
-  if (ctx.rhf != null) L.push("Ruhepuls: " + ctx.rhf + " bpm." + (ctx.hrv != null ? " HRV: " + ctx.hrv + " ms." : ""));
+  { const hv = hrvOf(data, today); if (ctx.rhf != null || hv != null) L.push("Ruhepuls: " + num(ctx.rhf) + " bpm." + (hv != null ? " HRV: " + hv + " ms (selbst eingetragen)." : "")); }
 
   // Gewichtsverlauf (alle Messungen chronologisch)
   const wDates = Object.keys(data.context || {}).filter((dd) => typeof (data.context[dd] || {}).weight === "number").sort();
@@ -233,7 +242,7 @@ function buildCoachContext(data) {
   for (let i = 0; i <= 21; i++) {
     const dd = dstr(i); const c = data.context[dd]; const a = actOf(data, dd);
     if (!c && a == null) continue;
-    dayLines.push(fmtShort(dd) + ": Akt " + num(a) + ", Schlaf " + num(c && c.sleep) + ", RHF " + num(c && c.rhf) + ", HRV " + num(c && c.hrv) + ", Gew " + num(c && c.weight));
+    dayLines.push(fmtShort(dd) + ": Akt " + num(a) + ", Schlaf " + num(c && c.sleep) + ", RHF " + num(c && c.rhf) + ", HRV " + num(hrvOf(data, dd)) + ", Gew " + num(c && c.weight));
   }
   L.push(dayLines.length ? dayLines.join("\n") : "keine Health-Daten");
 
@@ -266,19 +275,27 @@ function buildCoachContext(data) {
 // Readiness-Score aus Schlaf, Ruhepuls (vs. Baseline) und Vortagsbelastung.
 function readiness(data) {
   const c = data.context[today] || {};
+  const hrvToday = hrvOf(data, today);
   const yA = actOf(data, dstr(1));
   const factors = [];
   let score = 55;
-  if (c.sleep != null) { score += Math.max(-22, Math.min(24, (c.sleep - 7) * 12)); factors.push(["Schlaf", c.sleep + " h", c.sleep >= 7]); }
+  if (c.sleep != null) { score += clampN((c.sleep - 7) * 12, -22, 24); factors.push(["Schlaf", c.sleep + " h", c.sleep >= 7]); }
+  // Ruhepuls vs. 14-Tage-Baseline
   const rs = [];
   for (let i = 1; i <= 14; i++) { const cc = data.context[dstr(i)]; if (cc && typeof cc.rhf === "number") rs.push(cc.rhf); }
-  const base = rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : null;
-  if (c.rhf != null && base != null) { score += Math.max(-20, Math.min(15, -(c.rhf - base) * 3)); factors.push(["Ruhepuls", c.rhf + " bpm", c.rhf <= base]); }
+  const rbase = rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : null;
+  if (c.rhf != null && rbase != null) { score += clampN(-(c.rhf - rbase) * 3, -18, 14); factors.push(["Ruhepuls", c.rhf + " bpm", c.rhf <= rbase]); }
   else if (c.rhf != null) factors.push(["Ruhepuls", c.rhf + " bpm", null]);
+  // HRV vs. 21-Tage-Baseline (höher = besser erholt)
+  const hs = [];
+  for (let i = 1; i <= 21; i++) { const v = hrvOf(data, dstr(i)); if (typeof v === "number") hs.push(v); }
+  const hbase = hs.length ? hs.reduce((a, b) => a + b, 0) / hs.length : null;
+  if (hrvToday != null && hbase != null) { score += clampN((hrvToday - hbase) * 0.7, -18, 22); factors.push(["HRV", hrvToday + " ms", hrvToday >= hbase]); }
+  else if (hrvToday != null) factors.push(["HRV", hrvToday + " ms", null]);
   if (yA != null) { score += yA > 1500 ? -12 : yA > 800 ? -4 : 4; factors.push(["Gestern", yA + " kcal", yA <= 800]); }
   score = Math.max(5, Math.min(99, Math.round(score)));
   const label = score >= 72 ? "Bereit — voll angreifen 💪" : score >= 50 ? "Solide — moderat trainieren" : "Erholung priorisieren 🧘";
-  return { score, label, factors, has: c.sleep != null || c.rhf != null };
+  return { score, label, factors, has: c.sleep != null || c.rhf != null || hrvToday != null };
 }
 
 const COACH_ANALYST = "Du bist ein präziser, ehrlicher Performance-Coach für Felix (pescetarischer Ironman-Triathlet, 26, 186cm, ~82kg). Analysiere die gegebenen Daten konkret und knapp auf Deutsch (Du-Form). Nenne 2-4 konkrete Beobachtungen/Empfehlungen, keine Floskeln, kein Fließtext-Roman. Nutze Zahlen aus den Daten.";
@@ -329,7 +346,7 @@ export default function App() {
       <div style={{ maxWidth: 460, margin: "0 auto", minHeight: "100dvh", position: "relative", zIndex: 1, display: "flex", flexDirection: "column" }}>
         <div className="scroll" style={{ flex: 1, padding: "env(safe-area-inset-top) 0 calc(96px + env(safe-area-inset-bottom))" }}>
           <div key={tab} className="fade-in">
-            {tab === "home" && <Home data={data} />}
+            {tab === "home" && <Home data={data} commit={commit} />}
             {tab === "train" && <Training data={data} commit={commit} active={active} setActive={setActive} />}
             {tab === "food" && <Food data={data} commit={commit} />}
             {tab === "analyse" && <Analyse data={data} />}
@@ -1318,7 +1335,32 @@ function AddFood({ mealLabel, onAdd, close, data, commit }) {
 function Macro({ label, v, t, color }) { const pct = Math.min(100, (v / t) * 100); return (<div style={{ marginBottom: 11 }}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}><span style={{ fontSize: 13, fontWeight: 600 }}>{label}</span><span style={{ fontSize: 12, color: H.sub, fontVariantNumeric: "tabular-nums" }}>{v}<span style={{ color: H.faint }}> / {t} g</span></span></div><Bar pct={pct} color={color} /></div>); }
 
 /* ================= HOME ================= */
-function Home({ data }) {
+function HrvPrompt({ data, commit }) {
+  const cur = hrvOf(data, today);
+  const [open, setOpen] = useState(false);
+  const [v, setV] = useState("");
+  const save = () => { const n = Math.round(dec(v)); if (!n) return; commit({ ...data, hrvLog: { ...(data.hrvLog || {}), [today]: n } }); setOpen(false); setV(""); };
+  // Wert schon da und nicht im Bearbeiten-Modus → kompakte Zeile.
+  if (cur != null && !open) return (
+    <div className="glass" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, background: H.glass, border: "1px solid " + H.glassLine, borderRadius: 14, padding: "10px 14px" }}>
+      <span style={{ fontSize: 13, color: H.sub }}>HRV heute: <b style={{ color: H.text }}>{cur} ms</b></span>
+      <div style={{ flex: 1 }} />
+      <button onClick={() => { setV(String(cur)); setOpen(true); }} className="press" style={{ all: "unset", cursor: "pointer", color: H.blue, fontSize: 12.5, fontWeight: 700 }}>ändern</button>
+    </div>
+  );
+  // Sonst: nach HRV fragen (bzw. Bearbeiten-Feld).
+  return (
+    <Card style={{ marginBottom: 14 }}>
+      <Label style={{ marginBottom: 8, color: H.blue }}><Sparkles size={12} style={{ verticalAlign: "-2px" }} /> Morgen-Check</Label>
+      <div style={{ fontSize: 14, marginBottom: 10 }}>Wie ist deine HRV heute? (aus Coros/Health, in ms) — fließt direkt in deinen Readiness-Score ein.</div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") save(); }} inputMode="numeric" placeholder="z.B. 68" className="fld" style={{ flex: 1, padding: "12px 14px", borderRadius: 12, border: "1px solid transparent", background: H.bg2, color: H.text, fontSize: 16, fontWeight: 700, boxSizing: "border-box", outline: "none" }} />
+        <button onClick={save} disabled={!dec(v)} className="press" style={{ flexShrink: 0, padding: "0 20px", borderRadius: 12, border: "none", background: dec(v) ? H.grad : H.card, color: dec(v) ? "#fff" : H.faint, fontWeight: 750, fontSize: 14, cursor: dec(v) ? "pointer" : "default" }}>Speichern</button>
+      </div>
+    </Card>
+  );
+}
+function Home({ data, commit }) {
   const set = data.settings; const ctx = data.context[today] || {}; const nut = data.nutrition[today] || emptyDay();
   const eaten = [].concat(...MEALS.map(([k]) => nut[k] || [])).reduce((a, m) => ({ p: a.p + m.p, k: a.k + m.k }), { p: 0, k: 0 });
   const act = actOf(data, today);
@@ -1330,6 +1372,7 @@ function Home({ data }) {
 
   return (
     <Page title="Heute" sub={new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })}>
+      <HrvPrompt data={data} commit={commit} />
       {rd.has && (
         <Card style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 16 }}>
           <Ring score={rd.score} />
