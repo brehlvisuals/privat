@@ -286,16 +286,35 @@ function readiness(data) {
   const rbase = rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : null;
   if (c.rhf != null && rbase != null) { score += clampN(-(c.rhf - rbase) * 3, -18, 14); factors.push(["Ruhepuls", c.rhf + " bpm", c.rhf <= rbase]); }
   else if (c.rhf != null) factors.push(["Ruhepuls", c.rhf + " bpm", null]);
-  // HRV vs. 21-Tage-Baseline (höher = besser erholt)
+  // HRV vs. persönliche Normalspanne — nach COROS-Logik (4 Stufen).
+  // Baseline μ ± Streuung σ aus bis zu 30 Vortagen. „Erhöht" (über Spanne) = positiv
+  // mit Hinweis; „Reduziert"/„Niedrig" (drunter) = Abzug.
   const hs = [];
-  for (let i = 1; i <= 21; i++) { const v = hrvOf(data, dstr(i)); if (typeof v === "number") hs.push(v); }
-  const hbase = hs.length ? hs.reduce((a, b) => a + b, 0) / hs.length : null;
-  if (hrvToday != null && hbase != null) { score += clampN((hrvToday - hbase) * 0.7, -18, 22); factors.push(["HRV", hrvToday + " ms", hrvToday >= hbase]); }
-  else if (hrvToday != null) factors.push(["HRV", hrvToday + " ms", null]);
+  for (let i = 1; i <= 30; i++) { const v = hrvOf(data, dstr(i)); if (typeof v === "number") hs.push(v); }
+  let hrvNote = null;
+  if (hrvToday != null) {
+    if (hs.length >= 4) {
+      const mu = hs.reduce((a, b) => a + b, 0) / hs.length;
+      const sd = Math.max(3, Math.sqrt(hs.reduce((a, b) => a + (b - mu) * (b - mu), 0) / hs.length));
+      const z = (hrvToday - mu) / sd;
+      let pts, status, good;
+      if (z >= 0.5) { pts = 16; status = "erhöht"; good = true; hrvNote = "HRV über deiner Normalspanne — meist gut erholt; bei plötzlichem Sprung auch auf Krankheit/Alkohol/Schlaf achten."; }
+      else if (z > -0.5) { pts = 12; status = "normal"; good = true; }
+      else if (z > -1.2) { pts = -10; status = "reduziert"; good = false; hrvNote = "HRV leicht unter deiner Normalspanne — dein Körper steht unter Belastung, evtl. lockerer machen."; }
+      else { pts = -20; status = "niedrig"; good = false; hrvNote = "HRV deutlich unter Normalspanne — starke Belastung/unvollständige Erholung, Ruhe einplanen."; }
+      score += pts;
+      factors.push(["HRV", hrvToday + " ms · " + status, good]);
+    } else {
+      // Noch zu wenig Verlauf für eine Normalspanne → einfacher Bezug zum bisherigen Schnitt.
+      const mu = hs.length ? hs.reduce((a, b) => a + b, 0) / hs.length : null;
+      if (mu != null) score += clampN((hrvToday - mu) * 0.7, -16, 16);
+      factors.push(["HRV", hrvToday + " ms", mu != null ? hrvToday >= mu : null]);
+    }
+  }
   if (yA != null) { score += yA > 1500 ? -12 : yA > 800 ? -4 : 4; factors.push(["Gestern", yA + " kcal", yA <= 800]); }
   score = Math.max(5, Math.min(99, Math.round(score)));
   const label = score >= 72 ? "Bereit — voll angreifen 💪" : score >= 50 ? "Solide — moderat trainieren" : "Erholung priorisieren 🧘";
-  return { score, label, factors, has: c.sleep != null || c.rhf != null || hrvToday != null };
+  return { score, label, factors, note: hrvNote, has: c.sleep != null || c.rhf != null || hrvToday != null };
 }
 
 const COACH_ANALYST = "Du bist ein präziser, ehrlicher Performance-Coach für Felix (pescetarischer Ironman-Triathlet, 26, 186cm, ~82kg). Analysiere die gegebenen Daten konkret und knapp auf Deutsch (Du-Form). Nenne 2-4 konkrete Beobachtungen/Empfehlungen, keine Floskeln, kein Fließtext-Roman. Nutze Zahlen aus den Daten.";
@@ -1376,13 +1395,16 @@ function Home({ data, commit }) {
     <Page title="Heute" sub={new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })}>
       <HrvPrompt data={data} commit={commit} />
       {rd.has && (
-        <Card style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 16 }}>
-          <Ring score={rd.score} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <Label style={{ marginBottom: 4 }}>Readiness heute</Label>
-            <div style={{ fontSize: 15, fontWeight: 750, lineHeight: 1.25 }}>{rd.label}</div>
-            <div style={{ display: "flex", gap: 12, marginTop: 8, flexWrap: "wrap" }}>{rd.factors.map(([l, v, g], i) => <Mini key={i} label={l} v={v} good={g} />)}</div>
+        <Card style={{ marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <Ring score={rd.score} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Label style={{ marginBottom: 4 }}>Readiness heute</Label>
+              <div style={{ fontSize: 15, fontWeight: 750, lineHeight: 1.25 }}>{rd.label}</div>
+              <div style={{ display: "flex", gap: 12, marginTop: 8, flexWrap: "wrap" }}>{rd.factors.map(([l, v, g], i) => <Mini key={i} label={l} v={v} good={g} />)}</div>
+            </div>
           </div>
+          {rd.note && <div style={{ fontSize: 12.5, color: H.sub, lineHeight: 1.5, marginTop: 12, paddingTop: 12, borderTop: "1px solid " + H.line }}>ℹ️ {rd.note}</div>}
         </Card>
       )}
       <Label style={{ margin: "0 4px 8px" }}>Heute · aus Apple Health</Label>
