@@ -1,5 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#0D0D10"/>
-  <rect x="56" y="56" width="400" height="400" rx="88" fill="#2E6BFF"/>
-  <path d="M196 152h74c46 0 78 30 78 74s-32 74-78 74h-34v66h-40V152zm40 112h32c22 0 36-14 36-38s-14-38-36-38h-32v76z" fill="#fff"/>
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="40" y1="20" x2="472" y2="492" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9A8CFF"/>
+      <stop offset="0.5" stop-color="#6E5CFF"/>
+      <stop offset="1" stop-color="#4A38C4"/>
+    </linearGradient>
+    <radialGradient id="hi" cx="0.28" cy="0.22" r="0.75">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="sh" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="14" flood-color="#241a6b" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <rect width="512" height="512" fill="url(#hi)"/>
+  <polyline points="118,338 210,262 296,306 392,168" fill="none" stroke="#ffffff" stroke-width="32" stroke-linecap="round" stroke-linejoin="round" filter="url(#sh)"/>
+  <circle cx="392" cy="168" r="48" fill="none" stroke="#ffffff" stroke-opacity="0.42" stroke-width="10"/>
+  <circle cx="392" cy="168" r="27" fill="#ffffff"/>
 </svg>

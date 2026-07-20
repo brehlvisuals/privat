@@ -10,11 +10,11 @@ import {
 
 const H = {
   bg: "#07070B", bg2: "rgba(255,255,255,0.045)", card: "#16161E", cardHi: "#20202B", line: "rgba(255,255,255,0.09)",
-  text: "#F4F4F8", sub: "#9C9CAB", faint: "#61616F", blue: "#3B82F6", blueSoft: "rgba(59,130,246,0.15)",
-  up: "#34D399", down: "#FB6A62", amber: "#FBBF4B", violet: "#A78BFA",
+  text: "#F4F3F8", sub: "#9C99AB", faint: "#615F6F", blue: "#8B7CFF", blueSoft: "rgba(124,108,255,0.16)",
+  up: "#34E0A1", down: "#FB6A62", amber: "#FBBF4B", violet: "#A78BFA",
   // Liquid-Glass-Tokens
   glass: "rgba(255,255,255,0.055)", glassHi: "rgba(255,255,255,0.09)", glassLine: "rgba(255,255,255,0.12)",
-  blueGlow: "rgba(59,130,246,0.45)",
+  blueGlow: "rgba(124,108,255,0.5)", grad: "linear-gradient(140deg,#8B7CFF,#6E5CFF)", gradSoft: "linear-gradient(90deg,#7C6CFF,#A78BFA)",
 };
 
 /* ---------- helpers ---------- */
@@ -272,11 +272,11 @@ export default function App() {
   const commit = (d) => { setData(d); persist(d); };
 
   return (
-    <div style={{ position: "relative", minHeight: "100dvh", background: "linear-gradient(180deg,#0A0A12 0%,#07070B 60%,#050509 100%)", fontFamily: "-apple-system,ui-sans-serif,SF Pro Display,Segoe UI,Roboto,sans-serif", color: H.text }}>
+    <div style={{ position: "relative", minHeight: "100dvh", background: "linear-gradient(180deg,#0A0A12 0%,#07070B 60%,#050509 100%)", fontFamily: "var(--font-manrope), -apple-system, ui-sans-serif, sans-serif", color: H.text }}>
       <Style />
       {/* Farb-Glow-Ebene für Tiefe hinter dem Glas */}
       <div aria-hidden style={{ position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none",
-        background: "radial-gradient(120% 55% at 50% -8%, rgba(59,130,246,0.18), transparent 60%), radial-gradient(90% 40% at 85% 8%, rgba(167,139,250,0.10), transparent 55%)" }} />
+        background: "radial-gradient(120% 55% at 50% -8%, rgba(124,108,255,0.22), transparent 60%), radial-gradient(90% 45% at 85% 6%, rgba(167,139,250,0.14), transparent 55%)" }} />
       <div style={{ maxWidth: 460, margin: "0 auto", minHeight: "100dvh", position: "relative", zIndex: 1, display: "flex", flexDirection: "column" }}>
         <div className="scroll" style={{ flex: 1, padding: "env(safe-area-inset-top) 0 calc(96px + env(safe-area-inset-bottom))" }}>
           <div key={tab} className="fade-in">
@@ -290,7 +290,7 @@ export default function App() {
         {!chatOpen && (
           <button onClick={() => setChatOpen(true)} aria-label="KI-Coach" className="press"
             style={{ position: "fixed", bottom: "calc(84px + env(safe-area-inset-bottom))", right: "max(16px, calc(50% - 214px))", width: 56, height: 56, borderRadius: 28, border: "1px solid rgba(255,255,255,.18)", cursor: "pointer", zIndex: 45,
-              background: "linear-gradient(140deg, #5B95FF, #2E6BFF)", boxShadow: "0 10px 30px -6px " + H.blueGlow + ", inset 0 1px 0 rgba(255,255,255,.3)", display: "grid", placeItems: "center" }}>
+              background: H.grad, boxShadow: "0 10px 30px -6px " + H.blueGlow + ", inset 0 1px 0 rgba(255,255,255,.3)", display: "grid", placeItems: "center" }}>
             <Sparkles size={24} color="#fff" />
           </button>
         )}
@@ -464,7 +464,7 @@ function Coach({ msgs, setMsgs, close, data, commit }) {
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", flexDirection: "column", background: H.bg }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "calc(16px + env(safe-area-inset-top)) 18px 16px", borderBottom: "1px solid " + H.line }}>
-        <span style={{ width: 34, height: 34, borderRadius: 17, background: "linear-gradient(135deg,#4D86FF,#2E6BFF)", display: "grid", placeItems: "center" }}><Sparkles size={18} color="#fff" /></span>
+        <span style={{ width: 34, height: 34, borderRadius: 17, background: H.grad, boxShadow: "0 4px 14px -3px " + H.blueGlow, display: "grid", placeItems: "center" }}><Sparkles size={18} color="#fff" /></span>
         <div style={{ flex: 1 }}><div style={{ fontSize: 15.5, fontWeight: 750 }}>KI-Coach</div><div style={{ fontSize: 11.5, color: H.sub }}>kennt deinen Kontext</div></div>
         <button onClick={close} style={{ all: "unset", cursor: "pointer", color: H.sub }}><X size={22} /></button>
       </div>
@@ -752,7 +752,7 @@ function Detail({ ex, sess, context, back, onSave }) {
 
 /* ================= FOOD ================= */
 function Food({ data, commit }) {
-  const [date, setDate] = useState(today); const [addTo, setAddTo] = useState(null); const [showSet, setShowSet] = useState(false); const [edit, setEdit] = useState(null);
+  const [date, setDate] = useState(today); const [addTo, setAddTo] = useState(null); const [showSet, setShowSet] = useState(false); const [edit, setEdit] = useState(null); const [mealView, setMealView] = useState(null);
   const touch = useRef(null); const set = data.settings;
   const day = (data.nutrition && data.nutrition[date]) || emptyDay();
   const all = [].concat(...MEALS.map(([k]) => day[k] || []));
@@ -778,6 +778,43 @@ function Food({ data, commit }) {
       setDate((d) => shiftDate(d, dx < 0 ? 1 : -1));
     }
   };
+
+  // Overlays (Hinzufügen / Bearbeiten / Ziele) — in beiden Ansichten verfügbar.
+  const overlays = (<>
+    {addTo && <AddFood mealLabel={MEALS.find((m) => m[0] === addTo)[1]} onAdd={(item) => { addItem(addTo, item); setAddTo(null); }} close={() => setAddTo(null)} data={data} commit={commit} />}
+    {edit && day[edit.meal] && day[edit.meal][edit.idx] && <EditFood entry={day[edit.meal][edit.idx]} onSave={(ne) => { updItem(edit.meal, edit.idx, ne); setEdit(null); }} onDelete={() => { delItem(edit.meal, edit.idx); setEdit(null); }} close={() => setEdit(null)} />}
+    {showSet && <NutSettings set={set} onSave={(s) => { commit({ ...data, settings: s }); setShowSet(false); }} close={() => setShowSet(false)} />}
+  </>);
+
+  // Yazio-artige Einzel-Auswertung einer Mahlzeit.
+  if (mealView) {
+    const k = mealView; const label = (MEALS.find((m) => m[0] === k) || [k, k])[1];
+    const items = day[k] || [];
+    const ms = items.reduce((a, m) => ({ p: a.p + m.p, f: a.f + m.f, c: a.c + m.c, k: a.k + m.k }), { p: 0, f: 0, c: 0, k: 0 });
+    return (
+      <Page title={label} backFn={() => setMealView(null)} subEl={<span style={{ fontSize: 13, color: H.sub }}>{dayLabel(date)}</span>}>
+        <div className="rise" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+          <MacroTile label="Kalorien" v={Math.round(ms.k)} unit="kcal" accent />
+          <MacroTile label="Protein" v={Math.round(ms.p)} unit="g" color={H.blue} />
+          <MacroTile label="Fett" v={Math.round(ms.f)} unit="g" color={H.amber} />
+          <MacroTile label="Kohlenhydrate" v={Math.round(ms.c)} unit="g" color={H.up} />
+        </div>
+        <Label style={{ margin: "0 4px 8px" }}>Einträge</Label>
+        {items.length === 0 && <div style={{ fontSize: 13.5, color: H.faint, textAlign: "center", padding: "16px 0" }}>Noch nichts eingetragen.</div>}
+        {items.map((m, i) => (
+          <Card key={m.id || i} style={{ marginBottom: 8, padding: "12px 14px", display: "flex", alignItems: "center" }}>
+            <div onClick={() => setEdit({ meal: k, idx: i })} style={{ flex: 1, cursor: "pointer", minWidth: 0 }}>
+              <div style={{ fontSize: 14.5, fontWeight: 650 }}>{m.n}{m.ai && <Sparkles size={11} color={H.blue} style={{ marginLeft: 5, verticalAlign: "-1px" }} />}</div>
+              <div style={{ fontSize: 11.5, color: H.faint, fontVariantNumeric: "tabular-nums", marginTop: 2 }}>{m.p}P · {m.f}F · {m.c}K · {m.k} kcal</div>
+            </div>
+            <button onClick={() => delItem(k, i)} className="press" style={{ all: "unset", cursor: "pointer", color: H.faint, fontSize: 18, paddingLeft: 10 }}>×</button>
+          </Card>
+        ))}
+        <button onClick={() => setAddTo(k)} className="press" style={{ width: "100%", marginTop: 8, padding: 14, borderRadius: 14, border: "none", background: H.grad, color: "#fff", fontSize: 15, fontWeight: 750, cursor: "pointer", boxShadow: "0 8px 22px -8px " + H.blueGlow }}>+ Zu {label} hinzufügen</button>
+        {overlays}
+      </Page>
+    );
+  }
 
   return (
     <Page title="Ernährung" action={<button onClick={() => setShowSet(true)} style={iconBtn} title="Ziele einstellen"><Settings size={19} color={H.sub} /></button>}>
@@ -814,8 +851,8 @@ function Food({ data, commit }) {
 
         {MEALS.map(([k, label]) => { const items = day[k] || []; const ms = items.reduce((a, m) => ({ p: a.p + m.p, f: a.f + m.f, c: a.c + m.c, k: a.k + m.k }), { p: 0, f: 0, c: 0, k: 0 }); return (
           <Card key={k} style={{ marginBottom: 11 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: items.length ? 8 : 0 }}>
-              <span style={{ fontSize: 15, fontWeight: 720 }}>{label}</span>
+            <div onClick={() => setMealView(k)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: items.length ? 8 : 0, cursor: "pointer" }}>
+              <span style={{ fontSize: 15, fontWeight: 720, display: "flex", alignItems: "center", gap: 5 }}>{label}<ChevronRight size={15} color={H.faint} /></span>
               <span style={{ fontSize: 12, color: H.faint, fontVariantNumeric: "tabular-nums", textAlign: "right" }}>
                 {items.length ? <span style={{ marginRight: 8 }}>{Math.round(ms.p)}P · {Math.round(ms.f)}F · {Math.round(ms.c)}K</span> : null}{Math.round(ms.k)} kcal
               </span>
@@ -830,12 +867,16 @@ function Food({ data, commit }) {
         <div style={{ fontSize: 11, color: H.faint, textAlign: "center", marginTop: 6 }}>Wischen für anderen Tag · Aktivität live aus Coros</div>
       </div>
 
-      {addTo && <AddFood mealLabel={MEALS.find((m) => m[0] === addTo)[1]} onAdd={(item) => { addItem(addTo, item); setAddTo(null); }} close={() => setAddTo(null)} data={data} commit={commit} />}
-      {edit && day[edit.meal] && day[edit.meal][edit.idx] && <EditFood entry={day[edit.meal][edit.idx]} onSave={(ne) => { updItem(edit.meal, edit.idx, ne); setEdit(null); }} onDelete={() => { delItem(edit.meal, edit.idx); setEdit(null); }} close={() => setEdit(null)} />}
-      {showSet && <NutSettings set={set} onSave={(s) => { commit({ ...data, settings: s }); setShowSet(false); }} close={() => setShowSet(false)} />}
+      {overlays}
     </Page>
   );
 }
+const MacroTile = ({ label, v, unit, color, accent }) => (
+  <div className={accent ? "" : "glass"} style={{ background: accent ? H.grad : H.glass, border: accent ? "none" : "1px solid " + H.glassLine, borderRadius: 18, padding: "16px 16px 15px", boxShadow: accent ? "0 8px 24px -8px " + H.blueGlow : "none" }}>
+    <div style={{ fontSize: 10.5, letterSpacing: 0.6, textTransform: "uppercase", fontWeight: 700, color: accent ? "rgba(255,255,255,.8)" : H.faint }}>{label}</div>
+    <div style={{ fontSize: 30, fontWeight: 820, letterSpacing: -1, marginTop: 4, fontVariantNumeric: "tabular-nums", color: accent ? "#fff" : (color || H.text), lineHeight: 1 }}>{v}<span style={{ fontSize: 13, fontWeight: 650, color: accent ? "rgba(255,255,255,.7)" : H.sub }}> {unit}</span></div>
+  </div>
+);
 const Bal = ({ label, v, sub, strong }) => (
   <div style={{ flex: 1 }}>
     <div style={{ fontSize: 10, color: H.faint, textTransform: "uppercase", letterSpacing: 0.3, fontWeight: 700 }}>{label}</div>
@@ -1219,7 +1260,7 @@ const Page = ({ title, sub, subEl, backFn, action, children }) => (
 const Card = ({ children, style }) => <div className="glass" style={{ background: H.glass, border: "1px solid " + H.glassLine, borderRadius: 20, padding: 16, ...style }}>{children}</div>;
 const Label = ({ children, style }) => <div style={{ fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase", color: H.faint, fontWeight: 700, marginBottom: 8, ...style }}>{children}</div>;
 const Bar = ({ pct, color }) => <div style={{ height: 7, borderRadius: 4, background: H.bg2, overflow: "hidden" }}><div className="b" style={{ width: pct + "%", height: "100%", background: color, borderRadius: 4 }} /></div>;
-const Stat = ({ label, value, accent, color }) => (<div className={accent ? "" : "glass"} style={{ flex: 1, background: accent ? "linear-gradient(150deg,#4D8DFF,#2E6BFF)" : H.glass, border: accent ? "none" : "1px solid " + H.glassLine, borderRadius: 16, padding: "12px", boxShadow: accent ? "0 6px 20px -6px " + H.blueGlow : "none" }}><div style={{ fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase", color: accent ? "rgba(255,255,255,.75)" : H.faint, fontWeight: 700 }}>{label}</div><div style={{ fontSize: 17, fontWeight: 800, marginTop: 3, color: color || (accent ? "#fff" : H.text), fontVariantNumeric: "tabular-nums", letterSpacing: -0.3 }}>{value}</div></div>);
+const Stat = ({ label, value, accent, color }) => (<div className={accent ? "" : "glass"} style={{ flex: 1, background: accent ? H.grad : H.glass, border: accent ? "none" : "1px solid " + H.glassLine, borderRadius: 16, padding: "12px", boxShadow: accent ? "0 6px 20px -6px " + H.blueGlow : "none" }}><div style={{ fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase", color: accent ? "rgba(255,255,255,.75)" : H.faint, fontWeight: 700 }}>{label}</div><div style={{ fontSize: 17, fontWeight: 800, marginTop: 3, color: color || (accent ? "#fff" : H.text), fontVariantNumeric: "tabular-nums", letterSpacing: -0.3 }}>{value}</div></div>);
 const Mini = ({ label, v, good }) => <div style={{ flex: 1 }}><div style={{ fontSize: 10, color: H.faint, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 700 }}>{label}</div><div style={{ fontSize: 13, fontWeight: 700, marginTop: 2, color: good ? H.up : H.down }}>{v}</div></div>;
 function Ring({ score }) { const r = 36, c = 2 * Math.PI * r, off = c * (1 - score / 100), col = score >= 70 ? H.up : score >= 50 ? H.amber : H.down; return (<svg width="88" height="88" viewBox="0 0 100 100" style={{ flexShrink: 0 }}><circle cx="50" cy="50" r={r} fill="none" stroke={H.bg2} strokeWidth="8" /><circle cx="50" cy="50" r={r} fill="none" stroke={col} strokeWidth="8" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={off} transform="rotate(-90 50 50)" style={{ transition: "stroke-dashoffset .9s ease" }} /><text x="50" y="50" textAnchor="middle" dominantBaseline="central" fill={H.text} fontSize="27" fontWeight="800">{score}</text></svg>); }
 function Chart({ points }) {
@@ -1258,7 +1299,7 @@ const Style = () => (<style>{`
   .scroll{ -webkit-overflow-scrolling:touch; overscroll-behavior-y:contain; scroll-behavior:smooth; }
   .glass{ backdrop-filter: blur(22px) saturate(150%); -webkit-backdrop-filter: blur(22px) saturate(150%); box-shadow: 0 8px 30px -12px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06); }
   .fld{ transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; }
-  .fld:focus{ border-color:` + H.blue + `; background:rgba(59,130,246,.08); box-shadow:0 0 0 3px rgba(59,130,246,.15); }
+  .fld:focus{ border-color:` + H.blue + `; background:rgba(124,108,255,.08); box-shadow:0 0 0 3px rgba(124,108,255,.16); }
   .addset:hover{border-color:` + H.blue + `}
   .b{transition:width .7s cubic-bezier(.22,1,.36,1)}
   button,input,textarea{font-family:inherit}
