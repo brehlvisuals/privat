@@ -654,14 +654,26 @@ function Training({ data, commit, active, setActive }) {
         : mode === "workout" ? (
           <>
             <button onClick={startWorkout} style={{ width: "100%", padding: 16, borderRadius: 14, border: "none", background: H.blue, color: "#fff", fontSize: 15, fontWeight: 750, cursor: "pointer", marginBottom: 18 }}>+ Neues Workout starten</button>
-            <Label style={{ margin: "0 4px 8px" }}>Verlauf</Label>
             {data.workouts.length === 0 && <div style={{ color: H.faint, fontSize: 13.5, textAlign: "center", padding: "18px 0" }}>Noch keine Workouts. Starte oben dein erstes.</div>}
-            {[...data.workouts].reverse().map((w) => { const sets = w.exercises.reduce((a, e) => a + e.sets.length, 0); const vol = w.exercises.reduce((a, e) => a + e.sets.reduce((s, x) => s + x.w * x.r, 0), 0); return (
-              <button key={w.id} onClick={() => openDetail(() => { setDetailW(w.id); setMode("wdetail"); })} style={{ all: "unset", cursor: "pointer", display: "block", width: "100%", boxSizing: "border-box", background: H.card, border: "1px solid " + H.line, borderRadius: 16, padding: 16, marginBottom: 9 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 15, fontWeight: 720 }}>{w.name}</span><span style={{ fontSize: 12, color: H.sub }}>{dayLabel(w.date) === "Heute" ? "Heute" : fmtShort(w.date)} <ChevronRight size={13} color={H.faint} style={{ verticalAlign: "-2px" }} /></span></div>
-                <div style={{ fontSize: 12.5, color: H.sub, marginTop: 4, display: "flex", gap: 12 }}><span><Clock size={11} style={{ verticalAlign: "-1px" }} /> {w.durationMin} min</span><span>{w.exercises.length} Üb · {sets} Sätze</span><span>{(vol / 1000).toFixed(1)} t</span></div>
-                <div style={{ fontSize: 12.5, color: H.faint, marginTop: 6 }}>{w.exercises.map((e) => e.name).join(" · ")}</div>
-              </button>); })}
+            {(() => {
+              const sorted = [...data.workouts].sort((a, b) => b.date.localeCompare(a.date));
+              const groups = []; let curKey = null;
+              for (const w of sorted) { const key = (w.date || "").slice(0, 7); if (key !== curKey) { groups.push({ key, label: new Date((w.date || today) + "T00:00:00").toLocaleDateString("de-DE", { month: "long", year: "numeric" }), items: [] }); curKey = key; } groups[groups.length - 1].items.push(w); }
+              return groups.map((g) => (
+                <div key={g.key}>
+                  <Label style={{ margin: "14px 4px 8px" }}>{g.label} · {g.items.length}</Label>
+                  {g.items.map((w) => { const sets = w.exercises.reduce((a, e) => a + e.sets.length, 0); const vol = w.exercises.reduce((a, e) => a + e.sets.reduce((s, x) => s + x.w * x.r, 0), 0); return (
+                    <div key={w.id} style={{ display: "flex", alignItems: "stretch", background: H.card, border: "1px solid " + H.line, borderRadius: 16, marginBottom: 9, overflow: "hidden" }}>
+                      <button onClick={() => openDetail(() => { setDetailW(w.id); setMode("wdetail"); })} style={{ all: "unset", cursor: "pointer", flex: 1, minWidth: 0, boxSizing: "border-box", padding: 16 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 15, fontWeight: 720 }}>{w.name}</span><span style={{ fontSize: 12, color: H.sub }}>{dayLabel(w.date) === "Heute" ? "Heute" : fmtShort(w.date)} <ChevronRight size={13} color={H.faint} style={{ verticalAlign: "-2px" }} /></span></div>
+                        <div style={{ fontSize: 12.5, color: H.sub, marginTop: 4, display: "flex", gap: 12 }}><span><Clock size={11} style={{ verticalAlign: "-1px" }} /> {w.durationMin} min</span><span>{w.exercises.length} Üb · {sets} Sätze</span><span>{(vol / 1000).toFixed(1)} t</span></div>
+                        <div style={{ fontSize: 12.5, color: H.faint, marginTop: 6 }}>{w.exercises.map((e) => e.name).join(" · ")}</div>
+                      </button>
+                      <button onClick={() => { if (typeof window !== "undefined" && !window.confirm("Workout „" + w.name + "“ vom " + fmtShort(w.date) + " löschen?")) return; commit({ ...data, workouts: data.workouts.filter((x) => x.id !== w.id) }); }} title="Workout löschen" className="press" style={{ all: "unset", cursor: "pointer", display: "flex", alignItems: "center", padding: "0 15px", color: H.faint, fontSize: 19, borderLeft: "1px solid " + H.line }}>×</button>
+                    </div>); })}
+                </div>
+              ));
+            })()}
           </>
         ) : mode === "records" ? <Records data={data} />
         : <Library data={data} open={(ex) => openDetail(() => { setDetailEx(ex); setMode("detail"); })} createEx={createEx} del={(ex) => commit({ ...data, exercises: data.exercises.filter((x) => x.id !== ex.id) })} editEx={(id, patch) => commit({ ...data, exercises: data.exercises.map((x) => (x.id === id ? { ...x, ...patch } : x)) })} />}
