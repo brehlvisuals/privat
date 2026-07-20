@@ -47,10 +47,13 @@ function buildInsight(sess, ctx) {
   const rows = sess.map((s) => ({ v: e1rm(bestSet(s.sets).w, bestSet(s.sets).r), c: ctx[s.date] })).filter((r) => r.c);
   if (rows.length < 4) return null;
   const sorted = [...rows].sort((a, b) => a.v - b.v), half = Math.floor(sorted.length / 2);
-  const weak = sorted.slice(0, half), strong = sorted.slice(-half), avg = (a, k) => a.reduce((s, r) => s + r.c[k], 0) / a.length, parts = [];
-  if (avg(strong, "sleep") - avg(weak, "sleep") >= 0.4) parts.push("Schlaf (Ø " + avg(strong, "sleep").toFixed(1) + " h vs. " + avg(weak, "sleep").toFixed(1) + " h)");
-  if (avg(strong, "protein") - avg(weak, "protein") >= 12) parts.push("Protein (Ø " + Math.round(avg(strong, "protein")) + " g vs. " + Math.round(avg(weak, "protein")) + " g)");
-  if (weak.filter((r) => r.c.stress === "hoch").length >= 2) parts.push("hoher Stress");
+  const weak = sorted.slice(0, half), strong = sorted.slice(-half);
+  const avg = (a, k) => { const xs = a.map((r) => r.c && r.c[k]).filter((v) => typeof v === "number"); return xs.length ? xs.reduce((s, v) => s + v, 0) / xs.length : null; };
+  const parts = [];
+  const ss = avg(strong, "sleep"), sw = avg(weak, "sleep");
+  if (ss != null && sw != null && ss - sw >= 0.4) parts.push("mehr Schlaf (Ø " + ss.toFixed(1) + " h vs. " + sw.toFixed(1) + " h)");
+  const rs = avg(strong, "rhf"), rw = avg(weak, "rhf");
+  if (rs != null && rw != null && rw - rs >= 2) parts.push("niedrigerer Ruhepuls (Ø " + Math.round(rs) + " vs. " + Math.round(rw) + " bpm)");
   return parts.length ? parts : null;
 }
 
@@ -728,22 +731,47 @@ function ExercisePicker({ data, onPick, onCreate, close }) {
 function Detail({ ex, sess, context, back, onSave }) {
   const [editing, setEditing] = useState(false);
   const points = sess.map((s) => ({ date: s.date, val: e1rm(bestSet(s.sets).w, bestSet(s.sets).r) }));
-  const tr = trend(points.map((p) => p.val)); const pr = sess.length ? Math.max(...sess.flatMap((s) => s.sets.map((x) => x.w))) : 0;
-  const cur = points.length ? points[points.length - 1].val : 0; const insight = buildInsight(sess, context); const recent = [...sess].reverse().slice(0, 6);
+  const tr = trend(points.map((p) => p.val));
+  const cur = points.length ? points[points.length - 1].val : 0;
+  const prW = sess.length ? Math.max(...sess.flatMap((s) => s.sets.map((x) => x.w))) : 0;       // Top-Gewicht
+  const bestE = points.length ? Math.max(...points.map((p) => p.val)) : 0;                        // bestes e1RM
+  const isPR = points.length >= 2 && cur >= bestE;                                                // aktuell = Rekord?
+  // bester Satz nach e1RM
+  let bestSetStr = "—";
+  if (sess.length) { let bv = -1; for (const s of sess) for (const x of s.sets) { const e = e1rm(x.w, x.r); if (e > bv) { bv = e; bestSetStr = x.w + "×" + x.r; } } }
+  const totalVol = sess.reduce((a, s) => a + s.sets.reduce((ss, x) => ss + x.w * x.r, 0), 0);
+  const insight = buildInsight(sess, context); const recent = [...sess].reverse().slice(0, 6);
   const editAction = onSave ? <button onClick={() => setEditing(true)} className="press" style={iconBtn} title="Übung bearbeiten"><Settings size={18} color={H.sub} /></button> : null;
+  const cmini = (c, dd) => {
+    const items = [];
+    if (c && c.sleep != null) items.push(["Schlaf", c.sleep + " h", c.sleep >= 7]);
+    if (c && c.rhf != null) items.push(["Ruhepuls", c.rhf + " bpm", c.rhf <= 52]);
+    const a = actOf({ context, activityAdj: {} }, dd); if (a != null) items.push(["Aktiv", a + " kcal", null]);
+    if (c && c.weight != null) items.push(["Gewicht", c.weight + " kg", null]);
+    return items;
+  };
   return (
     <Page title={ex.name} backFn={back} action={editAction} subEl={ex.gym && <span style={{ fontSize: 13, color: H.sub }}><MapPin size={12} style={{ verticalAlign: "-2px" }} /> {ex.gym}</span>}>
       {editing && <CreateExercise initial={ex} onSave={(patch) => { onSave(patch); setEditing(false); }} close={() => setEditing(false)} />}
       {sess.length < 1 ? <div style={{ color: H.faint, padding: 20, fontSize: 14 }}>Noch keine Sessions geloggt. Tippe oben rechts aufs Zahnrad, um Name/Gruppe zu ändern.</div> : <>
-        <div style={{ display: "flex", gap: 9, marginBottom: 14 }}><Stat label="e1RM" value={cur + " kg"} /><Stat label="Bestes" value={pr + " kg"} accent /><Stat label="Trend" value={tr.arrow + " " + tr.label} color={tr.color} /></div>
-        <Card style={{ marginBottom: 14, padding: "16px 10px 6px" }}><Label style={{ padding: "0 6px 4px" }}>Verlauf · geschätztes 1RM</Label><Chart points={points} /></Card>
-        {insight && <div style={{ background: H.blueSoft, border: "1px solid " + H.blue + "44", borderRadius: 16, padding: 16, marginBottom: 14 }}><Label style={{ color: H.blue }}>Kontext-Analyse</Label><div style={{ fontSize: 14, lineHeight: 1.55 }}>Deine starken Sessions hängen zusammen mit <b>{insight.join(", ")}</b>.{tr.dir === "down" && " Der aktuelle Einbruch passt ins selbe Muster — zuerst auf Schlaf & Protein schauen."}</div></div>}
+        <div style={{ display: "flex", gap: 9, marginBottom: 9 }}>
+          <Stat label={isPR ? "🏆 Top-Gewicht" : "Top-Gewicht"} value={prW + " kg"} accent />
+          <Stat label="e1RM aktuell" value={cur + " kg"} />
+          <Stat label="Trend" value={tr.arrow + " " + tr.label} color={tr.color} />
+        </div>
+        <div style={{ display: "flex", gap: 9, marginBottom: 14 }}>
+          <Stat label="Bester Satz" value={bestSetStr} />
+          <Stat label="Sessions" value={sess.length} />
+          <Stat label="Volumen ges." value={(totalVol / 1000).toFixed(1) + " t"} />
+        </div>
+        <Card style={{ marginBottom: 14, padding: "16px 10px 6px" }}><Label style={{ padding: "0 6px 4px" }}>Verlauf · geschätztes 1RM · wischen</Label><Chart points={points} /></Card>
+        {insight && <div style={{ background: H.blueSoft, border: "1px solid " + H.blue + "44", borderRadius: 16, padding: 16, marginBottom: 14 }}><Label style={{ color: H.blue }}>Kontext-Analyse</Label><div style={{ fontSize: 14, lineHeight: 1.55 }}>Deine starken Sessions hängen zusammen mit <b>{insight.join(", ")}</b>.{tr.dir === "down" && " Der aktuelle Einbruch passt ins selbe Muster — zuerst Schlaf & Erholung checken."}</div></div>}
         <Label style={{ margin: "0 4px 8px" }}>Letzte Sessions</Label>
-        {recent.map((s, i) => { const c = context[s.date]; return (
+        {recent.map((s, i) => { const c = context[s.date]; const minis = cmini(c, s.date); return (
           <Card key={i} style={{ marginBottom: 9 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 12.5, color: H.sub, fontWeight: 600 }}>{fmtShort(s.date)}</span><span style={{ fontSize: 15, fontWeight: 750, fontVariantNumeric: "tabular-nums" }}>{s.sets.map((x) => x.w + "×" + x.r).join("  ")}</span></div>
             {s.note && <div style={{ fontSize: 13, color: H.sub, marginTop: 5, fontStyle: "italic" }}>„{s.note}“</div>}
-            {c && <div style={{ display: "flex", gap: 14, marginTop: 9, paddingTop: 9, borderTop: "1px solid " + H.line }}><Mini label="Schlaf" v={c.sleep + " h"} good={c.sleep >= 7} /><Mini label="Protein" v={c.protein + " g"} good={c.protein >= 175} /><Mini label="Stress" v={c.stress} good={c.stress !== "hoch"} /></div>}
+            {minis.length > 0 && <div style={{ display: "flex", gap: 14, marginTop: 9, paddingTop: 9, borderTop: "1px solid " + H.line }}>{minis.map(([l, v, g], j) => <Mini key={j} label={l} v={v} good={g} />)}</div>}
           </Card>); })}
       </>}
     </Page>
@@ -1261,16 +1289,37 @@ const Card = ({ children, style }) => <div className="glass" style={{ background
 const Label = ({ children, style }) => <div style={{ fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase", color: H.faint, fontWeight: 700, marginBottom: 8, ...style }}>{children}</div>;
 const Bar = ({ pct, color }) => <div style={{ height: 7, borderRadius: 4, background: H.bg2, overflow: "hidden" }}><div className="b" style={{ width: pct + "%", height: "100%", background: color, borderRadius: 4 }} /></div>;
 const Stat = ({ label, value, accent, color }) => (<div className={accent ? "" : "glass"} style={{ flex: 1, background: accent ? H.grad : H.glass, border: accent ? "none" : "1px solid " + H.glassLine, borderRadius: 16, padding: "12px", boxShadow: accent ? "0 6px 20px -6px " + H.blueGlow : "none" }}><div style={{ fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase", color: accent ? "rgba(255,255,255,.75)" : H.faint, fontWeight: 700 }}>{label}</div><div style={{ fontSize: 17, fontWeight: 800, marginTop: 3, color: color || (accent ? "#fff" : H.text), fontVariantNumeric: "tabular-nums", letterSpacing: -0.3 }}>{value}</div></div>);
-const Mini = ({ label, v, good }) => <div style={{ flex: 1 }}><div style={{ fontSize: 10, color: H.faint, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 700 }}>{label}</div><div style={{ fontSize: 13, fontWeight: 700, marginTop: 2, color: good ? H.up : H.down }}>{v}</div></div>;
+const Mini = ({ label, v, good }) => <div style={{ flex: 1 }}><div style={{ fontSize: 10, color: H.faint, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 700 }}>{label}</div><div style={{ fontSize: 13, fontWeight: 700, marginTop: 2, color: good === true ? H.up : good === false ? H.down : H.text }}>{v}</div></div>;
 function Ring({ score }) { const r = 36, c = 2 * Math.PI * r, off = c * (1 - score / 100), col = score >= 70 ? H.up : score >= 50 ? H.amber : H.down; return (<svg width="88" height="88" viewBox="0 0 100 100" style={{ flexShrink: 0 }}><circle cx="50" cy="50" r={r} fill="none" stroke={H.bg2} strokeWidth="8" /><circle cx="50" cy="50" r={r} fill="none" stroke={col} strokeWidth="8" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={off} transform="rotate(-90 50 50)" style={{ transition: "stroke-dashoffset .9s ease" }} /><text x="50" y="50" textAnchor="middle" dominantBaseline="central" fill={H.text} fontSize="27" fontWeight="800">{score}</text></svg>); }
 function Chart({ points }) {
-  const W = 400, Ht = 150, pad = { l: 8, r: 8, t: 14, b: 22 };
+  const [sel, setSel] = useState(null);
+  const ref = useRef(null);
+  const W = 400, Ht = 150, pad = { l: 10, r: 10, t: 16, b: 22 };
   if (points.length < 2) return <div style={{ color: H.faint, fontSize: 13, padding: 16 }}>Mehr Sessions nötig.</div>;
   const vals = points.map((p) => p.val), min = Math.min(...vals) - 3, max = Math.max(...vals) + 3, rng = max - min || 1;
   const x = (i) => pad.l + (i / (points.length - 1)) * (W - pad.l - pad.r), y = (v) => pad.t + (1 - (v - min) / rng) * (Ht - pad.t - pad.b);
   const line = points.map((p, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(p.val).toFixed(1)).join(" ");
   const area = line + " L" + x(points.length - 1) + " " + (Ht - pad.b) + " L" + x(0) + " " + (Ht - pad.b) + " Z";
-  return (<svg viewBox={"0 0 " + W + " " + Ht} style={{ width: "100%", display: "block" }}><defs><linearGradient id="cg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={H.blue} stopOpacity="0.25" /><stop offset="100%" stopColor={H.blue} stopOpacity="0" /></linearGradient></defs><path d={area} fill="url(#cg)" /><path d={line} fill="none" stroke={H.blue} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />{points.map((p, i) => { const L = i === points.length - 1; return <circle key={i} cx={x(i)} cy={y(p.val)} r={L ? 5 : 3} fill={L ? H.blue : H.card} stroke={H.blue} strokeWidth="2" />; })}<text x={x(0)} y={Ht - 6} fontSize="10" fill={H.faint}>{fmtShort(points[0].date)}</text><text x={x(points.length - 1)} y={Ht - 6} fontSize="10" fill={H.faint} textAnchor="end">{fmtShort(points[points.length - 1].date)}</text></svg>);
+  const si = sel == null ? points.length - 1 : sel;
+  const pick = (clientX) => { const el = ref.current; if (!el) return; const r = el.getBoundingClientRect(); const frac = Math.max(0, Math.min(1, (clientX - r.left) / r.width)); setSel(Math.round(frac * (points.length - 1))); };
+  const onTouch = (e) => { if (e.touches && e.touches[0]) pick(e.touches[0].clientX); };
+  const onMouse = (e) => { if (e.buttons) pick(e.clientX); };
+  const labelLeft = Math.max(14, Math.min(86, (x(si) / W) * 100));
+  return (
+    <div ref={ref} style={{ position: "relative", touchAction: "pan-y", userSelect: "none", cursor: "pointer" }}
+      onTouchStart={onTouch} onTouchMove={onTouch} onMouseDown={pick && ((e) => pick(e.clientX))} onMouseMove={onMouse}>
+      <div style={{ position: "absolute", top: -2, left: labelLeft + "%", transform: "translateX(-50%)", background: H.grad, color: "#fff", fontSize: 11, fontWeight: 750, padding: "3px 9px", borderRadius: 9, whiteSpace: "nowrap", pointerEvents: "none", boxShadow: "0 4px 12px -4px " + H.blueGlow }}>{points[si].val} kg · {fmtShort(points[si].date)}</div>
+      <svg viewBox={"0 0 " + W + " " + Ht} style={{ width: "100%", display: "block", marginTop: 14 }}>
+        <defs><linearGradient id="cg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={H.blue} stopOpacity="0.28" /><stop offset="100%" stopColor={H.blue} stopOpacity="0" /></linearGradient></defs>
+        <path d={area} fill="url(#cg)" />
+        <path d={line} fill="none" stroke={H.blue} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+        <line x1={x(si)} y1={pad.t - 6} x2={x(si)} y2={Ht - pad.b} stroke={H.blue} strokeWidth="1" strokeDasharray="3 3" opacity="0.5" />
+        {points.map((p, i) => { const on = i === si; return <circle key={i} cx={x(i)} cy={y(p.val)} r={on ? 6 : 3} fill={on ? H.blue : H.card} stroke={H.blue} strokeWidth="2" />; })}
+        <text x={x(0)} y={Ht - 5} fontSize="10" fill={H.faint}>{fmtShort(points[0].date)}</text>
+        <text x={x(points.length - 1)} y={Ht - 5} fontSize="10" fill={H.faint} textAnchor="end">{fmtShort(points[points.length - 1].date)}</text>
+      </svg>
+    </div>
+  );
 }
 function Sheet({ title, close, children }) {
   return (<div onClick={close} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 70 }}>
