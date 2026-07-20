@@ -1036,10 +1036,27 @@ function NutSettings({ set, onSave, close }) {
       KH = übrige Kalorien nach Protein & Fett, geteilt durch 4. Steigen so von selbst mit der Aktivität und passen immer exakt zu deinem kcal-Budget.
     </div>
     <button onClick={() => onSave(s)} style={{ width: "100%", marginTop: 6, padding: 14, borderRadius: 13, border: "none", background: H.blue, color: "#fff", fontWeight: 750, fontSize: 15, cursor: "pointer" }}>Speichern</button>
+    <div style={{ height: 1, background: H.line, margin: "16px 0" }} />
+    <SetPassword />
     <form action="/auth/signout" method="post" style={{ marginTop: 10 }}>
       <button type="submit" style={{ width: "100%", padding: 12, borderRadius: 13, border: "1px solid " + H.line, background: "transparent", color: H.sub, fontWeight: 650, fontSize: 13.5, cursor: "pointer" }}>Abmelden</button>
     </form>
   </Sheet>);
+}
+function SetPassword() {
+  const [pw, setPw] = useState(""); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState("");
+  const save = async () => {
+    if (pw.length < 6 || busy) { setMsg("Mindestens 6 Zeichen."); return; }
+    setBusy(true); setMsg("");
+    try { const { error } = await supabase.auth.updateUser({ password: pw }); setMsg(error ? "Fehlgeschlagen: " + error.message : "✓ Passwort gesetzt — künftig direkt einloggen."); if (!error) setPw(""); }
+    catch (e) { setMsg("Fehlgeschlagen."); }
+    setBusy(false);
+  };
+  return (<div>
+    <Field label="Passwort für direkten Login setzen/ändern"><input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Neues Passwort (min. 6 Zeichen)" autoComplete="new-password" className="fld" style={sheetInput} /></Field>
+    <button onClick={save} disabled={busy || pw.length < 6} style={{ width: "100%", padding: 12, borderRadius: 13, border: "1px solid " + H.blue + "55", background: H.blueSoft, color: H.blue, fontWeight: 750, fontSize: 14, cursor: busy || pw.length < 6 ? "default" : "pointer" }}>{busy ? "…" : "Passwort speichern"}</button>
+    {msg && <div style={{ fontSize: 12.5, color: msg.startsWith("✓") ? H.up : H.down, marginTop: 8 }}>{msg}</div>}
+  </div>);
 }
 const UNIT_LABEL = { g: "g", ml: "ml", piece: "Stück", Portion: "Portion" };
 // Komma-toleranter Parser: deutsche Tastatur liefert "3,8" — Number("3,8") ist NaN.
