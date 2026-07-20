@@ -5,7 +5,7 @@ import {
   Flame, Dumbbell, Utensils, BarChart3, Plus, X, ChevronLeft, ChevronRight,
   Sparkles, MapPin, Search, Trophy, Watch, Activity, Scale, CheckCircle2,
   AlertTriangle, Zap, Clock, Settings, ClipboardList, Send, MessageCircle,
-  Camera, Mic
+  Camera, Mic, Pencil
 } from "lucide-react";
 
 const H = {
@@ -609,7 +609,7 @@ function Training({ data, commit, active, setActive }) {
               </button>); })}
           </>
         ) : mode === "records" ? <Records data={data} />
-        : <Library data={data} open={(ex) => { setDetailEx(ex); setMode("detail"); }} createEx={createEx} del={(ex) => commit({ ...data, exercises: data.exercises.filter((x) => x.id !== ex.id) })} />}
+        : <Library data={data} open={(ex) => { setDetailEx(ex); setMode("detail"); }} createEx={createEx} del={(ex) => commit({ ...data, exercises: data.exercises.filter((x) => x.id !== ex.id) })} editEx={(id, patch) => commit({ ...data, exercises: data.exercises.map((x) => (x.id === id ? { ...x, ...patch } : x)) })} />}
       {picker && <ExercisePicker data={data} onPick={addEx} onCreate={(ex) => addEx(createEx(ex))} close={() => setPicker(false)} />}
     </Page>
   );
@@ -805,8 +805,8 @@ function SetTable({ sets, onChange, last }) {
 }
 const numStyle = { width: "100%", padding: "10px", borderRadius: 10, border: "1px solid transparent", background: H.bg2, color: H.text, fontSize: 16, fontWeight: 700, textAlign: "center", outline: "none", boxSizing: "border-box", fontVariantNumeric: "tabular-nums" };
 
-function Library({ data, open, createEx, del }) {
-  const [q, setQ] = useState(""); const [creating, setCreating] = useState(false);
+function Library({ data, open, createEx, del, editEx }) {
+  const [q, setQ] = useState(""); const [creating, setCreating] = useState(false); const [editing, setEditing] = useState(null);
   const list = data.exercises.filter((e) => e.name.toLowerCase().includes(q.toLowerCase()));
   const rmEx = (ev, ex) => { ev.stopPropagation(); if (typeof window !== "undefined" && !window.confirm("Übung „" + ex.name + "“ löschen? (Bereits geloggte Workouts bleiben erhalten.)")) return; del && del(ex); };
   return (<>
@@ -816,14 +816,16 @@ function Library({ data, open, createEx, del }) {
     {list.length === 0 && <div style={{ fontSize: 13.5, color: H.faint, textAlign: "center", padding: "18px 0" }}>Keine Übungen. Erstelle oben deine erste.</div>}
     {list.map((ex) => (
       <div key={ex.id} style={{ display: "flex", alignItems: "stretch", background: H.card, border: "1px solid " + H.line, borderRadius: 14, marginBottom: 9, overflow: "hidden" }}>
-        <button onClick={() => open(ex)} style={{ all: "unset", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", flex: 1, boxSizing: "border-box", padding: "14px 12px 14px 16px", minWidth: 0 }}>
+        <button onClick={() => open(ex)} style={{ all: "unset", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", flex: 1, boxSizing: "border-box", padding: "14px 8px 14px 16px", minWidth: 0 }}>
           <div><div style={{ fontSize: 15.5, fontWeight: 700 }}>{ex.name} {ex.custom && <span style={{ fontSize: 10, color: H.blue, border: "1px solid " + H.blue, borderRadius: 5, padding: "1px 5px", marginLeft: 4 }}>eigen</span>}</div>
             <div style={{ fontSize: 12, color: H.faint, marginTop: 2 }}>{ex.group}{ex.gym && " · "}{ex.gym && <span><MapPin size={10} style={{ verticalAlign: "-1px" }} /> {ex.gym}</span>}</div></div>
           <ChevronRight size={16} color={H.faint} />
         </button>
-        <button onClick={(ev) => rmEx(ev, ex)} title="Übung löschen" style={{ all: "unset", cursor: "pointer", display: "flex", alignItems: "center", padding: "0 15px", color: H.faint, fontSize: 19, borderLeft: "1px solid " + H.line }}>×</button>
+        <button onClick={(ev) => { ev.stopPropagation(); setEditing(ex); }} title="Übung bearbeiten" className="press" style={{ all: "unset", cursor: "pointer", display: "flex", alignItems: "center", padding: "0 13px", color: H.sub, borderLeft: "1px solid " + H.line }}><Pencil size={16} /></button>
+        <button onClick={(ev) => rmEx(ev, ex)} title="Übung löschen" className="press" style={{ all: "unset", cursor: "pointer", display: "flex", alignItems: "center", padding: "0 14px", color: H.faint, fontSize: 19, borderLeft: "1px solid " + H.line }}>×</button>
       </div>))}
     {creating && <CreateExercise onSave={(ex) => { createEx(ex); setCreating(false); }} close={() => setCreating(false)} />}
+    {editing && <CreateExercise initial={editing} onSave={(patch) => { editEx && editEx(editing.id, patch); setEditing(null); }} close={() => setEditing(null)} />}
   </>);
 }
 function CreateExercise({ onSave, close, initial }) {
