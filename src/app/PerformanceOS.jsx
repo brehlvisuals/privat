@@ -110,6 +110,8 @@ function migrate(d) {
     nut[day] = dd;
   }
   m.nutrition = nut;
+  // Übungen ohne stabile id nachrüsten (sonst nicht editier-/löschbar).
+  if (Array.isArray(m.exercises)) m.exercises = m.exercises.map((e) => (e && e.id ? e : { ...e, id: "x" + mkid() }));
   return m;
 }
 
@@ -826,7 +828,7 @@ const numStyle = { width: "100%", padding: "10px", borderRadius: 10, border: "1p
 
 function Library({ data, open, createEx, del, editEx }) {
   const [q, setQ] = useState(""); const [creating, setCreating] = useState(false); const [editing, setEditing] = useState(null);
-  const list = data.exercises.filter((e) => e.name.toLowerCase().includes(q.toLowerCase()));
+  const list = data.exercises.filter((e) => e.name.toLowerCase().includes(q.toLowerCase())).sort((a, b) => a.name.localeCompare(b.name, "de"));
   const rmEx = (ev, ex) => { ev.stopPropagation(); if (typeof window !== "undefined" && !window.confirm("Übung „" + ex.name + "“ löschen? (Bereits geloggte Workouts bleiben erhalten.)")) return; del && del(ex); };
   return (<>
     <div style={{ position: "relative", marginBottom: 12 }}><Search size={15} color={H.faint} style={{ position: "absolute", left: 12, top: 12 }} />
@@ -859,7 +861,7 @@ function CreateExercise({ onSave, close, initial }) {
 }
 function ExercisePicker({ data, onPick, onCreate, close }) {
   const [q, setQ] = useState(""); const [creating, setCreating] = useState(false);
-  const list = data.exercises.filter((e) => e.name.toLowerCase().includes(q.toLowerCase()));
+  const list = data.exercises.filter((e) => e.name.toLowerCase().includes(q.toLowerCase())).sort((a, b) => a.name.localeCompare(b.name, "de"));
   return (<Sheet close={close} title="Übung hinzufügen">
     <div style={{ position: "relative", marginBottom: 12 }}><Search size={15} color={H.faint} style={{ position: "absolute", left: 12, top: 12 }} /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Suchen" className="fld" style={{ ...sheetInput, paddingLeft: 34 }} /></div>
     <button onClick={() => setCreating(true)} style={{ width: "100%", padding: 11, borderRadius: 11, border: "1px solid " + H.blue, background: H.blueSoft, color: H.blue, fontWeight: 700, fontSize: 13.5, cursor: "pointer", marginBottom: 12 }}>+ Neue Übung erstellen</button>
@@ -1265,7 +1267,7 @@ function AddFood({ mealLabel, onAdd, close, data, commit }) {
   const uf = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const title = mode === "portion" ? "Menge wählen" : mode === "create" ? "Lebensmittel anlegen" : mode === "scan" ? "Barcode scannen" : "Hinzufügen · " + mealLabel;
 
-  return (<Sheet close={close} title={title}>
+  return (<Sheet close={close} title={title} full={mode === "search" || mode === "scan"}>
     {mode === "search" && <>
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
         <button onClick={() => setMode("scan")} style={{ flex: 1, padding: 12, borderRadius: 12, border: "1px solid " + H.blue, background: H.blueSoft, color: H.blue, fontWeight: 750, fontSize: 13.5, cursor: "pointer" }}>📷 Barcode scannen</button>
@@ -1273,7 +1275,7 @@ function AddFood({ mealLabel, onAdd, close, data, commit }) {
       </div>
       <div style={{ position: "relative", marginBottom: 10 }}><Search size={15} color={H.faint} style={{ position: "absolute", left: 12, top: 12 }} />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Lebensmittel suchen" className="fld" style={{ ...sheetInput, paddingLeft: 34 }} /></div>
-      <div style={{ maxHeight: 300, overflowY: "auto" }} className="scroll">
+      <div style={{ flex: 1, minHeight: 120, overflowY: "auto" }} className="scroll">
         {libLoading && library.length === 0 && <div style={{ fontSize: 13, color: H.faint, textAlign: "center", padding: "16px 0" }}>Lade deine Lebensmittel …</div>}
         {results.map((f, i) => (
           <div key={(f.id || f.name) + i} style={{ display: "flex", alignItems: "stretch", background: H.bg2, borderRadius: 11, marginBottom: 7, overflow: "hidden" }}>
@@ -1540,11 +1542,16 @@ function Chart({ points }) {
     </div>
   );
 }
-function Sheet({ title, close, children }) {
+function Sheet({ title, close, children, full }) {
+  // full=true: fast bildschirmhoch, oben verankert — so verdeckt die Tastatur
+  // Eingabefeld & Ergebnisse nicht (z.B. Lebensmittelsuche). Sonst Bottom-Sheet.
+  const inner = full
+    ? { height: "92dvh", maxHeight: "92dvh", display: "flex", flexDirection: "column", borderRadius: "20px 20px 0 0" }
+    : { maxHeight: "82%", overflowY: "auto", borderRadius: "20px 20px 0 0" };
   return (<div onClick={close} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 70 }}>
-    <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 460, background: H.card, borderRadius: "20px 20px 0 0", border: "1px solid " + H.line, borderBottom: "none", padding: 18, maxHeight: "82%", overflowY: "auto", boxSizing: "border-box" }} className="scroll">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}><span style={{ fontSize: 17, fontWeight: 780 }}>{title}</span><button onClick={close} style={{ all: "unset", cursor: "pointer", color: H.sub }}><X size={20} /></button></div>
-      {children}
+    <div onClick={(e) => e.stopPropagation()} className={full ? "" : "scroll"} style={{ width: "100%", maxWidth: 460, background: H.card, border: "1px solid " + H.line, borderBottom: "none", padding: 18, boxSizing: "border-box", ...inner }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexShrink: 0 }}><span style={{ fontSize: 17, fontWeight: 780 }}>{title}</span><button onClick={close} className="press" style={{ all: "unset", cursor: "pointer", color: H.sub }}><X size={20} /></button></div>
+      {full ? <div className="scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column" }}>{children}</div> : children}
     </div></div>);
 }
 const Field = ({ label, children }) => <div style={{ marginBottom: 12 }}><div style={{ fontSize: 12, color: H.sub, marginBottom: 6 }}>{label}</div>{children}</div>;
