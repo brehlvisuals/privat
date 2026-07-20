@@ -9,9 +9,12 @@ import {
 } from "lucide-react";
 
 const H = {
-  bg: "#0D0D10", bg2: "#141418", card: "#1A1A21", cardHi: "#23232C", line: "#2A2A33",
-  text: "#F3F3F6", sub: "#9A9AA6", faint: "#5A5A66", blue: "#2E6BFF", blueSoft: "rgba(46,107,255,0.14)",
-  up: "#27C28B", down: "#FF5A52", amber: "#F2B84B", violet: "#A78BFA",
+  bg: "#07070B", bg2: "rgba(255,255,255,0.045)", card: "#16161E", cardHi: "#20202B", line: "rgba(255,255,255,0.09)",
+  text: "#F4F4F8", sub: "#9C9CAB", faint: "#61616F", blue: "#3B82F6", blueSoft: "rgba(59,130,246,0.15)",
+  up: "#34D399", down: "#FB6A62", amber: "#FBBF4B", violet: "#A78BFA",
+  // Liquid-Glass-Tokens
+  glass: "rgba(255,255,255,0.055)", glassHi: "rgba(255,255,255,0.09)", glassLine: "rgba(255,255,255,0.12)",
+  blueGlow: "rgba(59,130,246,0.45)",
 };
 
 /* ---------- helpers ---------- */
@@ -269,20 +272,25 @@ export default function App() {
   const commit = (d) => { setData(d); persist(d); };
 
   return (
-    <div style={{ background: H.bg, minHeight: "100dvh", fontFamily: "ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif", color: H.text }}>
+    <div style={{ position: "relative", minHeight: "100dvh", background: "linear-gradient(180deg,#0A0A12 0%,#07070B 60%,#050509 100%)", fontFamily: "-apple-system,ui-sans-serif,SF Pro Display,Segoe UI,Roboto,sans-serif", color: H.text }}>
       <Style />
-      <div style={{ maxWidth: 460, margin: "0 auto", minHeight: "100dvh", position: "relative", display: "flex", flexDirection: "column" }}>
+      {/* Farb-Glow-Ebene für Tiefe hinter dem Glas */}
+      <div aria-hidden style={{ position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none",
+        background: "radial-gradient(120% 55% at 50% -8%, rgba(59,130,246,0.18), transparent 60%), radial-gradient(90% 40% at 85% 8%, rgba(167,139,250,0.10), transparent 55%)" }} />
+      <div style={{ maxWidth: 460, margin: "0 auto", minHeight: "100dvh", position: "relative", zIndex: 1, display: "flex", flexDirection: "column" }}>
         <div className="scroll" style={{ flex: 1, padding: "env(safe-area-inset-top) 0 calc(96px + env(safe-area-inset-bottom))" }}>
-          {tab === "home" && <Home data={data} />}
-          {tab === "train" && <Training data={data} commit={commit} active={active} setActive={setActive} />}
-          {tab === "food" && <Food data={data} commit={commit} />}
-          {tab === "analyse" && <Analyse data={data} />}
+          <div key={tab} className="fade-in">
+            {tab === "home" && <Home data={data} />}
+            {tab === "train" && <Training data={data} commit={commit} active={active} setActive={setActive} />}
+            {tab === "food" && <Food data={data} commit={commit} />}
+            {tab === "analyse" && <Analyse data={data} />}
+          </div>
         </div>
 
         {!chatOpen && (
-          <button onClick={() => setChatOpen(true)} aria-label="KI-Coach"
-            style={{ position: "fixed", bottom: "calc(84px + env(safe-area-inset-bottom))", right: "max(16px, calc(50% - 214px))", width: 54, height: 54, borderRadius: 27, border: "none", cursor: "pointer", zIndex: 45,
-              background: "linear-gradient(135deg, #4D86FF, #2E6BFF)", boxShadow: "0 8px 22px -6px rgba(46,107,255,.6)", display: "grid", placeItems: "center" }}>
+          <button onClick={() => setChatOpen(true)} aria-label="KI-Coach" className="press"
+            style={{ position: "fixed", bottom: "calc(84px + env(safe-area-inset-bottom))", right: "max(16px, calc(50% - 214px))", width: 56, height: 56, borderRadius: 28, border: "1px solid rgba(255,255,255,.18)", cursor: "pointer", zIndex: 45,
+              background: "linear-gradient(140deg, #5B95FF, #2E6BFF)", boxShadow: "0 10px 30px -6px " + H.blueGlow + ", inset 0 1px 0 rgba(255,255,255,.3)", display: "grid", placeItems: "center" }}>
             <Sparkles size={24} color="#fff" />
           </button>
         )}
@@ -1208,10 +1216,10 @@ const Page = ({ title, sub, subEl, backFn, action, children }) => (
     {children}
   </div>
 );
-const Card = ({ children, style }) => <div style={{ background: H.card, border: "1px solid " + H.line, borderRadius: 16, padding: 16, ...style }}>{children}</div>;
+const Card = ({ children, style }) => <div className="glass" style={{ background: H.glass, border: "1px solid " + H.glassLine, borderRadius: 20, padding: 16, ...style }}>{children}</div>;
 const Label = ({ children, style }) => <div style={{ fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase", color: H.faint, fontWeight: 700, marginBottom: 8, ...style }}>{children}</div>;
 const Bar = ({ pct, color }) => <div style={{ height: 7, borderRadius: 4, background: H.bg2, overflow: "hidden" }}><div className="b" style={{ width: pct + "%", height: "100%", background: color, borderRadius: 4 }} /></div>;
-const Stat = ({ label, value, accent, color }) => (<div style={{ flex: 1, background: accent ? H.blue : H.card, border: accent ? "none" : "1px solid " + H.line, borderRadius: 14, padding: "12px" }}><div style={{ fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase", color: accent ? "rgba(255,255,255,.7)" : H.faint, fontWeight: 700 }}>{label}</div><div style={{ fontSize: 17, fontWeight: 800, marginTop: 3, color: color || (accent ? "#fff" : H.text), fontVariantNumeric: "tabular-nums" }}>{value}</div></div>);
+const Stat = ({ label, value, accent, color }) => (<div className={accent ? "" : "glass"} style={{ flex: 1, background: accent ? "linear-gradient(150deg,#4D8DFF,#2E6BFF)" : H.glass, border: accent ? "none" : "1px solid " + H.glassLine, borderRadius: 16, padding: "12px", boxShadow: accent ? "0 6px 20px -6px " + H.blueGlow : "none" }}><div style={{ fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase", color: accent ? "rgba(255,255,255,.75)" : H.faint, fontWeight: 700 }}>{label}</div><div style={{ fontSize: 17, fontWeight: 800, marginTop: 3, color: color || (accent ? "#fff" : H.text), fontVariantNumeric: "tabular-nums", letterSpacing: -0.3 }}>{value}</div></div>);
 const Mini = ({ label, v, good }) => <div style={{ flex: 1 }}><div style={{ fontSize: 10, color: H.faint, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 700 }}>{label}</div><div style={{ fontSize: 13, fontWeight: 700, marginTop: 2, color: good ? H.up : H.down }}>{v}</div></div>;
 function Ring({ score }) { const r = 36, c = 2 * Math.PI * r, off = c * (1 - score / 100), col = score >= 70 ? H.up : score >= 50 ? H.amber : H.down; return (<svg width="88" height="88" viewBox="0 0 100 100" style={{ flexShrink: 0 }}><circle cx="50" cy="50" r={r} fill="none" stroke={H.bg2} strokeWidth="8" /><circle cx="50" cy="50" r={r} fill="none" stroke={col} strokeWidth="8" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={off} transform="rotate(-90 50 50)" style={{ transition: "stroke-dashoffset .9s ease" }} /><text x="50" y="50" textAnchor="middle" dominantBaseline="central" fill={H.text} fontSize="27" fontWeight="800">{score}</text></svg>); }
 function Chart({ points }) {
@@ -1236,27 +1244,34 @@ const navBtn = { all: "unset", cursor: "pointer", padding: "4px 10px", display: 
 const iconBtn = { all: "unset", cursor: "pointer", width: 38, height: 38, borderRadius: 11, background: H.card, border: "1px solid " + H.line, display: "grid", placeItems: "center" };
 function Nav({ tab, setTab, active }) {
   const items = [{ k: "home", l: "Heute", I: Flame }, { k: "train", l: "Training", I: Dumbbell }, { k: "food", l: "Ernährung", I: Utensils }, { k: "analyse", l: "Analyse", I: BarChart3 }];
-  return (<div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 460, zIndex: 50, display: "flex", background: "rgba(13,13,16,.92)", backdropFilter: "blur(10px)", borderTop: "1px solid " + H.line, padding: "8px 0 calc(8px + env(safe-area-inset-bottom))" }}>
+  return (<div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 460, zIndex: 50, display: "flex", background: "rgba(12,12,18,.72)", backdropFilter: "blur(24px) saturate(150%)", WebkitBackdropFilter: "blur(24px) saturate(150%)", borderTop: "1px solid " + H.glassLine, padding: "9px 0 calc(9px + env(safe-area-inset-bottom))" }}>
     {items.map(({ k, l, I }) => { const on = tab === k; const dot = active && k === "train"; return (
-      <button key={k} onClick={() => setTab(k)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: on ? H.blue : H.faint, position: "relative" }}>
-        <I size={21} color={on ? H.blue : H.faint} />
-        {dot && <span style={{ position: "absolute", top: -2, right: "32%", width: 7, height: 7, borderRadius: 7, background: H.up }} />}
-        <span style={{ fontSize: 10, fontWeight: 650 }}>{l}</span>
+      <button key={k} onClick={() => setTab(k)} className="press" style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: on ? H.blue : H.faint, position: "relative" }}>
+        <span style={{ display: "grid", placeItems: "center", width: 44, height: 30, borderRadius: 12, background: on ? H.blueSoft : "transparent", transition: "background .2s ease" }}><I size={20} color={on ? H.blue : H.faint} /></span>
+        {dot && <span style={{ position: "absolute", top: -1, right: "30%", width: 7, height: 7, borderRadius: 7, background: H.up, boxShadow: "0 0 8px " + H.up }} />}
+        <span style={{ fontSize: 10, fontWeight: on ? 750 : 600 }}>{l}</span>
       </button>); })}
   </div>);
 }
 const Style = () => (<style>{`
   .scroll::-webkit-scrollbar{width:0}
   .scroll{ -webkit-overflow-scrolling:touch; overscroll-behavior-y:contain; scroll-behavior:smooth; }
-  .fld:focus{border-color:` + H.blue + `;background:#101015}
+  .glass{ backdrop-filter: blur(22px) saturate(150%); -webkit-backdrop-filter: blur(22px) saturate(150%); box-shadow: 0 8px 30px -12px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06); }
+  .fld{ transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; }
+  .fld:focus{ border-color:` + H.blue + `; background:rgba(59,130,246,.08); box-shadow:0 0 0 3px rgba(59,130,246,.15); }
   .addset:hover{border-color:` + H.blue + `}
-  .b{transition:width .6s cubic-bezier(.2,.8,.2,1)}
+  .b{transition:width .7s cubic-bezier(.22,1,.36,1)}
   button,input,textarea{font-family:inherit}
   *{ -webkit-tap-highlight-color:transparent; }
   button{ touch-action:manipulation; }
-  .press{ transition:transform .12s ease, opacity .12s ease; }
-  .press:active{ transform:scale(.972); opacity:.85; }
-  .fade-in{ animation:fadeIn .22s ease both; }
-  @keyframes fadeIn{ from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:none} }
-  @media (prefers-reduced-motion: reduce){.b,circle,.press,.fade-in{transition:none;animation:none}}
+  .press{ transition:transform .16s cubic-bezier(.34,1.56,.64,1), opacity .16s ease, filter .16s ease; }
+  .press:active{ transform:scale(.955); opacity:.9; }
+  .fade-in{ animation:fadeIn .34s cubic-bezier(.22,1,.36,1) both; }
+  .rise > *{ animation:rise .42s cubic-bezier(.22,1,.36,1) both; }
+  .rise > *:nth-child(2){animation-delay:.04s} .rise > *:nth-child(3){animation-delay:.08s}
+  .rise > *:nth-child(4){animation-delay:.12s} .rise > *:nth-child(5){animation-delay:.16s}
+  .rise > *:nth-child(6){animation-delay:.2s} .rise > *:nth-child(n+7){animation-delay:.24s}
+  @keyframes fadeIn{ from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none} }
+  @keyframes rise{ from{opacity:0; transform:translateY(12px) scale(.99)} to{opacity:1; transform:none} }
+  @media (prefers-reduced-motion: reduce){.b,circle,.press,.fade-in,.rise>*{transition:none;animation:none}}
 `}</style>);
