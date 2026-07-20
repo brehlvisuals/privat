@@ -365,7 +365,7 @@ export default function App() {
       <div aria-hidden style={{ position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none",
         background: "radial-gradient(120% 55% at 50% -8%, rgba(124,108,255,0.22), transparent 60%), radial-gradient(90% 45% at 85% 6%, rgba(167,139,250,0.14), transparent 55%)" }} />
       <div style={{ maxWidth: 460, margin: "0 auto", minHeight: "100dvh", position: "relative", zIndex: 1, display: "flex", flexDirection: "column" }}>
-        <div className="scroll" style={{ flex: 1, padding: "env(safe-area-inset-top) 0 calc(96px + env(safe-area-inset-bottom))" }}>
+        <div id="appscroll" className="scroll" style={{ flex: 1, padding: "env(safe-area-inset-top) 0 calc(96px + env(safe-area-inset-bottom))" }}>
           <div key={tab} className="fade-in">
             {tab === "home" && <Home data={data} commit={commit} />}
             {tab === "train" && <Training data={data} commit={commit} active={active} setActive={setActive} />}
@@ -595,6 +595,19 @@ function Training({ data, commit, active, setActive }) {
   const [picker, setPicker] = useState(false);
   const sessForEx = (id) => data.workouts.flatMap((w) => w.exercises.filter((e) => e.exId === id).map((e) => ({ date: w.date, sets: e.sets, note: e.note }))).sort((a, b) => a.date.localeCompare(b.date));
 
+  // Scroll-Position der Liste merken: beim Öffnen eines Details sichern, bei
+  // Rückkehr wiederherstellen; beim Wechsel des Segments zurück nach oben.
+  const scrollY = useRef(0); const pending = useRef(false);
+  const scrollEl = () => (typeof document !== "undefined" ? document.getElementById("appscroll") : null);
+  const openDetail = (fn) => { const el = scrollEl(); scrollY.current = el ? el.scrollTop : 0; pending.current = true; fn(); };
+  const setSeg = (m) => { pending.current = false; const el = scrollEl(); if (el) el.scrollTop = 0; setMode(m); };
+  useEffect(() => {
+    if (mode === "workout" || mode === "library" || mode === "records") {
+      const el = scrollEl();
+      if (el && pending.current) { requestAnimationFrame(() => { el.scrollTop = scrollY.current; pending.current = false; }); }
+    }
+  }, [mode]);
+
   if (mode === "detail" && detailEx) return <Detail ex={detailEx} sess={sessForEx(detailEx.id)} context={data.context} back={() => setMode("library")} onSave={(patch) => { const ne = { ...detailEx, ...patch }; setDetailEx(ne); commit({ ...data, exercises: data.exercises.map((x) => (x.id === ne.id ? { ...x, ...patch } : x)) }); }} />;
   if (mode === "wdetail" && detailW) { const w = data.workouts.find((x) => x.id === detailW) || null; if (!w) { setMode("workout"); return null; } return <WorkoutDetail w={w} back={() => setMode("workout")} onSave={(nw) => commit({ ...data, workouts: data.workouts.map((x) => (x.id === nw.id ? nw : x)) })} onDelete={() => { commit({ ...data, workouts: data.workouts.filter((x) => x.id !== w.id) }); setMode("workout"); }} />; }
 
@@ -612,7 +625,7 @@ function Training({ data, commit, active, setActive }) {
       {!active && (
         <div style={{ display: "flex", gap: 4, marginBottom: 16, background: H.bg2, padding: 4, borderRadius: 12, width: "fit-content" }}>
           {[["workout", "Workouts"], ["library", "Übungen"], ["records", "Rekorde"]].map(([k, l]) => (
-            <button key={k} onClick={() => setMode(k)} style={{ border: "none", cursor: "pointer", padding: "7px 16px", borderRadius: 9, fontSize: 13.5, fontWeight: 700, background: mode === k ? H.card : "transparent", color: mode === k ? H.text : H.sub }}>{l}</button>
+            <button key={k} onClick={() => setSeg(k)} style={{ border: "none", cursor: "pointer", padding: "7px 16px", borderRadius: 9, fontSize: 13.5, fontWeight: 700, background: mode === k ? H.card : "transparent", color: mode === k ? H.text : H.sub }}>{l}</button>
           ))}
         </div>
       )}
@@ -623,14 +636,14 @@ function Training({ data, commit, active, setActive }) {
             <Label style={{ margin: "0 4px 8px" }}>Verlauf</Label>
             {data.workouts.length === 0 && <div style={{ color: H.faint, fontSize: 13.5, textAlign: "center", padding: "18px 0" }}>Noch keine Workouts. Starte oben dein erstes.</div>}
             {[...data.workouts].reverse().map((w) => { const sets = w.exercises.reduce((a, e) => a + e.sets.length, 0); const vol = w.exercises.reduce((a, e) => a + e.sets.reduce((s, x) => s + x.w * x.r, 0), 0); return (
-              <button key={w.id} onClick={() => { setDetailW(w.id); setMode("wdetail"); }} style={{ all: "unset", cursor: "pointer", display: "block", width: "100%", boxSizing: "border-box", background: H.card, border: "1px solid " + H.line, borderRadius: 16, padding: 16, marginBottom: 9 }}>
+              <button key={w.id} onClick={() => openDetail(() => { setDetailW(w.id); setMode("wdetail"); })} style={{ all: "unset", cursor: "pointer", display: "block", width: "100%", boxSizing: "border-box", background: H.card, border: "1px solid " + H.line, borderRadius: 16, padding: 16, marginBottom: 9 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 15, fontWeight: 720 }}>{w.name}</span><span style={{ fontSize: 12, color: H.sub }}>{dayLabel(w.date) === "Heute" ? "Heute" : fmtShort(w.date)} <ChevronRight size={13} color={H.faint} style={{ verticalAlign: "-2px" }} /></span></div>
                 <div style={{ fontSize: 12.5, color: H.sub, marginTop: 4, display: "flex", gap: 12 }}><span><Clock size={11} style={{ verticalAlign: "-1px" }} /> {w.durationMin} min</span><span>{w.exercises.length} Üb · {sets} Sätze</span><span>{(vol / 1000).toFixed(1)} t</span></div>
                 <div style={{ fontSize: 12.5, color: H.faint, marginTop: 6 }}>{w.exercises.map((e) => e.name).join(" · ")}</div>
               </button>); })}
           </>
         ) : mode === "records" ? <Records data={data} />
-        : <Library data={data} open={(ex) => { setDetailEx(ex); setMode("detail"); }} createEx={createEx} del={(ex) => commit({ ...data, exercises: data.exercises.filter((x) => x.id !== ex.id) })} editEx={(id, patch) => commit({ ...data, exercises: data.exercises.map((x) => (x.id === id ? { ...x, ...patch } : x)) })} />}
+        : <Library data={data} open={(ex) => openDetail(() => { setDetailEx(ex); setMode("detail"); })} createEx={createEx} del={(ex) => commit({ ...data, exercises: data.exercises.filter((x) => x.id !== ex.id) })} editEx={(id, patch) => commit({ ...data, exercises: data.exercises.map((x) => (x.id === id ? { ...x, ...patch } : x)) })} />}
       {picker && <ExercisePicker data={data} onPick={addEx} onCreate={(ex) => addEx(createEx(ex))} close={() => setPicker(false)} />}
     </Page>
   );
@@ -1269,11 +1282,11 @@ function AddFood({ mealLabel, onAdd, close, data, commit }) {
 
   return (<Sheet close={close} title={title} full={mode === "search" || mode === "scan"}>
     {mode === "search" && <>
-      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 10, flexShrink: 0 }}>
         <button onClick={() => setMode("scan")} style={{ flex: 1, padding: 12, borderRadius: 12, border: "1px solid " + H.blue, background: H.blueSoft, color: H.blue, fontWeight: 750, fontSize: 13.5, cursor: "pointer" }}>📷 Barcode scannen</button>
         <button onClick={() => { setForm(blankForm); setMode("create"); }} style={{ flex: 1, padding: 12, borderRadius: 12, border: "1px solid " + H.line, background: H.bg2, color: H.text, fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>+ Neues Lebensmittel</button>
       </div>
-      <div style={{ position: "relative", marginBottom: 10 }}><Search size={15} color={H.faint} style={{ position: "absolute", left: 12, top: 12 }} />
+      <div style={{ position: "relative", marginBottom: 10, flexShrink: 0 }}><Search size={15} color={H.faint} style={{ position: "absolute", left: 12, top: 12 }} />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Lebensmittel suchen" className="fld" style={{ ...sheetInput, paddingLeft: 34 }} /></div>
       <div style={{ flex: 1, minHeight: 120, overflowY: "auto" }} className="scroll">
         {libLoading && library.length === 0 && <div style={{ fontSize: 13, color: H.faint, textAlign: "center", padding: "16px 0" }}>Lade deine Lebensmittel …</div>}
@@ -1301,8 +1314,8 @@ function AddFood({ mealLabel, onAdd, close, data, commit }) {
         })()}
         {results.length === 0 && remote.length === 0 && !searching && q.trim().length >= 3 && <div style={{ fontSize: 13, color: H.faint, textAlign: "center", padding: "16px 0" }}>Nichts gefunden — leg es als neues Lebensmittel an oder scanne den Barcode.</div>}
       </div>
-      <Label style={{ margin: "16px 0 8px", color: H.blue }}><Sparkles size={12} style={{ verticalAlign: "-2px" }} /> Oder mit KI schätzen</Label>
-      <div style={{ display: "flex", gap: 8 }}>
+      <Label style={{ margin: "14px 0 8px", color: H.blue, flexShrink: 0 }}><Sparkles size={12} style={{ verticalAlign: "-2px" }} /> Oder mit KI schätzen</Label>
+      <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
         <input value={text} onChange={(e) => setText(e.target.value)} placeholder='z.B. „Döner mit allem"' className="fld" style={{ ...sheetInput, flex: 1 }} onKeyDown={(e) => { if (e.key === "Enter") est(); }} />
         <button onClick={est} disabled={aiBusy || !text.trim()} style={{ flexShrink: 0, padding: "0 16px", borderRadius: 11, border: "none", background: aiBusy || !text.trim() ? H.card : H.blue, color: aiBusy || !text.trim() ? H.faint : "#fff", fontWeight: 750, fontSize: 14, cursor: aiBusy ? "default" : "pointer" }}>{aiBusy ? "…" : "Schätzen"}</button>
       </div>
@@ -1551,7 +1564,7 @@ function Sheet({ title, close, children, full }) {
   return (<div onClick={close} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 70 }}>
     <div onClick={(e) => e.stopPropagation()} className={full ? "" : "scroll"} style={{ width: "100%", maxWidth: 460, background: H.card, border: "1px solid " + H.line, borderBottom: "none", padding: 18, boxSizing: "border-box", ...inner }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexShrink: 0 }}><span style={{ fontSize: 17, fontWeight: 780 }}>{title}</span><button onClick={close} className="press" style={{ all: "unset", cursor: "pointer", color: H.sub }}><X size={20} /></button></div>
-      {full ? <div className="scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column" }}>{children}</div> : children}
+      {full ? <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>{children}</div> : children}
     </div></div>);
 }
 const Field = ({ label, children }) => <div style={{ marginBottom: 12 }}><div style={{ fontSize: 12, color: H.sub, marginBottom: 6 }}>{label}</div>{children}</div>;
