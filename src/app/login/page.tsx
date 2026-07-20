@@ -53,7 +53,11 @@ export default function LoginPage() {
       options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
     });
     setBusy(false);
-    if (error) { setMsg("Konnte den Link nicht senden — nochmal versuchen."); return; }
+    if (error) {
+      const rl = (error.status === 429) || /rate limit/i.test(error.message || "");
+      setMsg(rl ? "Zu viele Login-Mails in kurzer Zeit (Server-Limit). Warte ~30–60 Min und versuch es dann EINMAL erneut — jeder weitere Klick verlängert die Sperre." : "Konnte den Link nicht senden — nochmal versuchen.");
+      return;
+    }
     setSent(true);
   };
 
