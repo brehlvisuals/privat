@@ -263,6 +263,52 @@ function buildCoachContext(data) {
   return L.join("\n");
 }
 
+// Readiness-Score aus Schlaf, Ruhepuls (vs. Baseline) und Vortagsbelastung.
+function readiness(data) {
+  const c = data.context[today] || {};
+  const yA = actOf(data, dstr(1));
+  const factors = [];
+  let score = 55;
+  if (c.sleep != null) { score += Math.max(-22, Math.min(24, (c.sleep - 7) * 12)); factors.push(["Schlaf", c.sleep + " h", c.sleep >= 7]); }
+  const rs = [];
+  for (let i = 1; i <= 14; i++) { const cc = data.context[dstr(i)]; if (cc && typeof cc.rhf === "number") rs.push(cc.rhf); }
+  const base = rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : null;
+  if (c.rhf != null && base != null) { score += Math.max(-20, Math.min(15, -(c.rhf - base) * 3)); factors.push(["Ruhepuls", c.rhf + " bpm", c.rhf <= base]); }
+  else if (c.rhf != null) factors.push(["Ruhepuls", c.rhf + " bpm", null]);
+  if (yA != null) { score += yA > 1500 ? -12 : yA > 800 ? -4 : 4; factors.push(["Gestern", yA + " kcal", yA <= 800]); }
+  score = Math.max(5, Math.min(99, Math.round(score)));
+  const label = score >= 72 ? "Bereit — voll angreifen 💪" : score >= 50 ? "Solide — moderat trainieren" : "Erholung priorisieren 🧘";
+  return { score, label, factors, has: c.sleep != null || c.rhf != null };
+}
+
+const COACH_ANALYST = "Du bist ein präziser, ehrlicher Performance-Coach für Felix (pescetarischer Ironman-Triathlet, 26, 186cm, ~82kg). Analysiere die gegebenen Daten konkret und knapp auf Deutsch (Du-Form). Nenne 2-4 konkrete Beobachtungen/Empfehlungen, keine Floskeln, kein Fließtext-Roman. Nutze Zahlen aus den Daten.";
+
+const aiBoxStyle = { background: H.blueSoft, border: "1px solid " + H.blue + "44", borderRadius: 18, padding: 16, marginBottom: 12 };
+const aiBtnStyle = { width: "100%", padding: 13, borderRadius: 14, border: "1px solid " + H.blue + "55", background: H.blueSoft, color: H.blue, fontWeight: 750, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 12 };
+
+// Wiederverwendbare KI-Analyse: Button -> Analyse-Text.
+function AiAnalysis({ prompt, cta, title }) {
+  const [txt, setTxt] = useState(""); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
+  const run = async () => { setBusy(true); setErr(""); try { const r = await callClaude([{ role: "user", content: typeof prompt === "function" ? prompt() : prompt }], COACH_ANALYST); setTxt((r || "").trim() || "Keine Analyse erhalten."); } catch (e) { setErr("gerade nicht verfügbar"); } setBusy(false); };
+  if (txt) return (<div className="glass fade-in" style={aiBoxStyle}><div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8, color: H.blue, fontSize: 11, fontWeight: 750, letterSpacing: 0.5, textTransform: "uppercase" }}><Sparkles size={13} /> {title || "KI-Analyse"}</div><div style={{ fontSize: 13.5, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{txt}</div></div>);
+  return (<button onClick={run} disabled={busy} className="press" style={{ ...aiBtnStyle, opacity: busy ? 0.7 : 1 }}><Sparkles size={15} /> {busy ? "Analysiere …" : (cta || "KI-Analyse")}{err && <span style={{ color: H.down, fontWeight: 600 }}> · {err}</span>}</button>);
+}
+
+// Persönliche Rekorde je Übung (Top-Gewicht + bestes e1RM).
+function prList(data) {
+  const byEx = {};
+  for (const w of data.workouts || []) for (const e of w.exercises) {
+    const key = e.exId || e.name;
+    const rec = byEx[key] || { name: e.name, topW: 0, topWset: null, bestE: 0, bestEset: null, date: w.date };
+    for (const x of e.sets) {
+      if (x.w > rec.topW) { rec.topW = x.w; rec.topWset = x; rec.date = w.date; }
+      const er = e1rm(x.w, x.r); if (er > rec.bestE) { rec.bestE = er; rec.bestEset = x; }
+    }
+    byEx[key] = rec;
+  }
+  return Object.values(byEx).filter((r) => r.topW > 0).sort((a, b) => b.bestE - a.bestE);
+}
+
 /* ================= APP ================= */
 export default function App() {
   const [data, setData] = useState(null);
@@ -527,7 +573,7 @@ function Training({ data, commit, active, setActive }) {
     <Page title={active ? "Aktives Workout" : "Training"}>
       {!active && (
         <div style={{ display: "flex", gap: 4, marginBottom: 16, background: H.bg2, padding: 4, borderRadius: 12, width: "fit-content" }}>
-          {[["workout", "Workouts"], ["library", "Übungen"]].map(([k, l]) => (
+          {[["workout", "Workouts"], ["library", "Übungen"], ["records", "Rekorde"]].map(([k, l]) => (
             <button key={k} onClick={() => setMode(k)} style={{ border: "none", cursor: "pointer", padding: "7px 16px", borderRadius: 9, fontSize: 13.5, fontWeight: 700, background: mode === k ? H.card : "transparent", color: mode === k ? H.text : H.sub }}>{l}</button>
           ))}
         </div>
@@ -545,10 +591,37 @@ function Training({ data, commit, active, setActive }) {
                 <div style={{ fontSize: 12.5, color: H.faint, marginTop: 6 }}>{w.exercises.map((e) => e.name).join(" · ")}</div>
               </button>); })}
           </>
-        ) : <Library data={data} open={(ex) => { setDetailEx(ex); setMode("detail"); }} createEx={createEx} del={(ex) => commit({ ...data, exercises: data.exercises.filter((x) => x.id !== ex.id) })} />}
+        ) : mode === "records" ? <Records data={data} />
+        : <Library data={data} open={(ex) => { setDetailEx(ex); setMode("detail"); }} createEx={createEx} del={(ex) => commit({ ...data, exercises: data.exercises.filter((x) => x.id !== ex.id) })} />}
       {picker && <ExercisePicker data={data} onPick={addEx} onCreate={(ex) => addEx(createEx(ex))} close={() => setPicker(false)} />}
     </Page>
   );
+}
+
+function Records({ data }) {
+  const prs = prList(data);
+  const topVol = (() => { let best = null; for (const w of data.workouts || []) { const v = w.exercises.reduce((a, e) => a + e.sets.reduce((s, x) => s + x.w * x.r, 0), 0); if (!best || v > best.v) best = { v, name: w.name, date: w.date }; } return best; })();
+  if (!prs.length) return <div style={{ color: H.faint, fontSize: 13.5, textAlign: "center", padding: "24px 0" }}>Noch keine Rekorde — logge ein Workout mit Gewichten, dann erscheinen hier deine Bestwerte.</div>;
+  return (<div className="rise">
+    {topVol && <Card style={{ marginBottom: 14, background: H.grad, border: "none", boxShadow: "0 10px 28px -10px " + H.blueGlow }}>
+      <div style={{ fontSize: 10.5, letterSpacing: 0.6, textTransform: "uppercase", fontWeight: 750, color: "rgba(255,255,255,.8)" }}>🏆 Größtes Workout-Volumen</div>
+      <div style={{ fontSize: 30, fontWeight: 820, color: "#fff", letterSpacing: -1, marginTop: 3 }}>{(topVol.v / 1000).toFixed(1)} t</div>
+      <div style={{ fontSize: 12.5, color: "rgba(255,255,255,.8)", marginTop: 2 }}>{topVol.name} · {fmtShort(topVol.date)}</div>
+    </Card>}
+    <Label style={{ margin: "0 4px 8px" }}>Persönliche Rekorde je Übung</Label>
+    {prs.map((r, i) => (
+      <Card key={i} style={{ marginBottom: 9, display: "flex", alignItems: "center", gap: 12, padding: "13px 15px" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 720, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</div>
+          <div style={{ fontSize: 11.5, color: H.faint, marginTop: 2 }}>Top-Satz {r.topWset.w}×{r.topWset.r} · {fmtShort(r.date)}</div>
+        </div>
+        <div style={{ textAlign: "right", flexShrink: 0 }}>
+          <div style={{ fontSize: 19, fontWeight: 820, color: H.blue, fontVariantNumeric: "tabular-nums", letterSpacing: -0.5 }}>{r.topW} kg</div>
+          <div style={{ fontSize: 10.5, color: H.faint }}>e1RM {r.bestE} kg</div>
+        </div>
+      </Card>
+    ))}
+  </div>);
 }
 
 function WorkoutDetail({ w, back, onDelete, onSave }) {
@@ -619,11 +692,41 @@ function WorkoutDetail({ w, back, onDelete, onSave }) {
           </Card>
         );
       })}
-      <button onClick={onDelete} className="press" style={{ width: "100%", marginTop: 8, padding: 12, borderRadius: 12, border: "1px solid " + H.line, background: "transparent", color: H.down, fontWeight: 650, fontSize: 13.5, cursor: "pointer" }}>Workout löschen</button>
+      {!editing && <AiAnalysis title="Workout-Analyse" cta="KI: dieses Workout auswerten" prompt={() => {
+        const exs = src.exercises.map((e) => e.name + ": " + e.sets.map((x) => x.w + "×" + x.r).join(", ")).join("\n");
+        return "Analysiere dieses Krafttraining vom " + src.date + ' ("' + src.name + '", ' + src.durationMin + " min, Volumen " + (vol / 1000).toFixed(1) + " t):\n" + exs + "\n\nGib eine kurze Einordnung: Satz-/Volumen-Qualität, mögliche Schwachstellen (z.B. wenig Sätze pro Muskelgruppe, Reps zu niedrig/hoch), und 1-2 konkrete Tipps für nächstes Mal.";
+      }} />}
+      <button onClick={onDelete} className="press" style={{ width: "100%", marginTop: 4, padding: 12, borderRadius: 12, border: "1px solid " + H.line, background: "transparent", color: H.down, fontWeight: 650, fontSize: 13.5, cursor: "pointer" }}>Workout löschen</button>
     </Page>
   );
 }
 
+const restChip = { border: "1px solid " + H.line, background: H.card, color: H.text, borderRadius: 10, padding: "7px 11px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" };
+function RestTimer() {
+  const [end, setEnd] = useState(null);
+  const [left, setLeft] = useState(0);
+  useEffect(() => {
+    if (!end) return;
+    const tick = () => { const l = Math.max(0, Math.round((end - Date.now()) / 1000)); setLeft(l); if (l <= 0) { setEnd(null); try { navigator.vibrate && navigator.vibrate([120, 60, 120]); } catch (e) {} } };
+    tick(); const t = setInterval(tick, 250); return () => clearInterval(t);
+  }, [end]);
+  const mm = String(Math.floor(left / 60)).padStart(2, "0"), ss = String(left % 60).padStart(2, "0");
+  if (!end) return (
+    <div style={{ display: "flex", gap: 6, marginBottom: 14, alignItems: "center", flexWrap: "wrap" }}>
+      <span style={{ fontSize: 12, color: H.faint, marginRight: 2 }}>Pause-Timer:</span>
+      {[60, 90, 120, 180].map((s) => <button key={s} onClick={() => setEnd(Date.now() + s * 1000)} className="press" style={restChip}>{s < 120 ? s + "s" : (s / 60) + " min"}</button>)}
+    </div>
+  );
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, background: H.blueSoft, border: "1px solid " + H.blue + "44", borderRadius: 14, padding: "10px 12px" }}>
+      <Clock size={16} color={H.blue} />
+      <span style={{ fontSize: 20, fontWeight: 800, color: H.blue, fontVariantNumeric: "tabular-nums", minWidth: 56 }}>{mm}:{ss}</span>
+      <div style={{ flex: 1 }} />
+      <button onClick={() => setEnd((e) => (e || Date.now()) + 30000)} className="press" style={restChip}>+30s</button>
+      <button onClick={() => setEnd(null)} className="press" style={{ ...restChip, color: H.down }}>Stop</button>
+    </div>
+  );
+}
 function ActiveWorkout({ active, setActive, openPicker, finish, data }) {
   const updEx = (i, fn) => setActive((a) => ({ ...a, exercises: a.exercises.map((e, j) => (j === i ? fn(e) : e)) }));
   const rmEx = (i) => setActive((a) => ({ ...a, exercises: a.exercises.filter((_, j) => j !== i) }));
@@ -646,7 +749,8 @@ function ActiveWorkout({ active, setActive, openPicker, finish, data }) {
         <button onClick={finish} className="press" style={{ border: "none", background: H.up, color: "#06281C", padding: "8px 16px", borderRadius: 10, fontWeight: 750, fontSize: 13, cursor: "pointer", flexShrink: 0 }}>Beenden & speichern</button>
       </div>
       <input value={active.name} onChange={(e) => setName(e.target.value)} placeholder="Workout-Name (z.B. Push A, Beine, Oberkörper)" className="fld"
-        style={{ width: "100%", marginBottom: 14, padding: "13px 14px", borderRadius: 13, border: "1px solid transparent", background: H.bg2, color: H.text, fontSize: 16, fontWeight: 700, boxSizing: "border-box", outline: "none" }} />
+        style={{ width: "100%", marginBottom: 12, padding: "13px 14px", borderRadius: 13, border: "1px solid transparent", background: H.bg2, color: H.text, fontSize: 16, fontWeight: 700, boxSizing: "border-box", outline: "none" }} />
+      <RestTimer />
       {active.exercises.length === 0 && <div style={{ color: H.faint, fontSize: 14, textAlign: "center", padding: "30px 0" }}>Noch keine Übung. Füg unten welche hinzu.</div>}
       {active.exercises.map((ex, i) => { const last = lastSets(ex); return (
         <Card key={i} style={{ marginBottom: 12 }}>
@@ -892,7 +996,11 @@ function Food({ data, commit }) {
               </div>))}
             <button onClick={() => setAddTo(k)} style={{ width: "100%", marginTop: 9, padding: 9, borderRadius: 10, border: "1px dashed " + H.line, background: "transparent", color: H.sub, fontSize: 13, fontWeight: 650, cursor: "pointer" }}>+ Hinzufügen</button>
           </Card>); })}
-        <div style={{ fontSize: 11, color: H.faint, textAlign: "center", marginTop: 6 }}>Wischen für anderen Tag · Aktivität live aus Coros</div>
+        {all.length > 0 && <div style={{ marginTop: 6 }}><AiAnalysis title="Ernährungs-Analyse" cta="KI: Tag auswerten" prompt={() => {
+          const items = MEALS.map(([k, label]) => { const it = day[k] || []; return it.length ? label + ": " + it.map((m) => m.n + " (" + m.k + "kcal " + m.p + "P " + m.f + "F " + m.c + "K)").join(", ") : null; }).filter(Boolean).join("\n");
+          return "Bewerte meinen Ernährungstag (" + dayLabel(date) + "). Ziele: Protein " + set.protein + "g (fix), Fett " + set.fat + "g (fix), Kohlenhydrate = Rest-kcal (heute " + carbTarget + "g). Verbrauch " + verbrauch + " kcal.\nGegessen gesamt: " + sum.k + " kcal, " + sum.p + "g P, " + sum.f + "g F, " + sum.c + "g KH. Bilanz " + bilanz + " kcal.\n" + items + "\n\nKurze Einordnung: Protein-/Kalorienziel getroffen? Verteilung/Qualität? 1-2 konkrete Tipps.";
+        }} /></div>}
+        <div style={{ fontSize: 11, color: H.faint, textAlign: "center", marginTop: 6 }}>Mahlzeit antippen für Details · wischen für anderen Tag</div>
       </div>
 
       {overlays}
@@ -1201,9 +1309,20 @@ function Home({ data }) {
   const pLeft = Math.max(0, set.protein - eaten.p); const kLeft = verbrauch - eaten.k;
   const lastW = (data.workouts || [])[data.workouts.length - 1] || null;
   const dash = (v, suf = "") => (v == null || v === "" ? "—" : v + suf);
+  const rd = readiness(data);
 
   return (
     <Page title="Heute" sub={new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })}>
+      {rd.has && (
+        <Card style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 16 }}>
+          <Ring score={rd.score} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <Label style={{ marginBottom: 4 }}>Readiness heute</Label>
+            <div style={{ fontSize: 15, fontWeight: 750, lineHeight: 1.25 }}>{rd.label}</div>
+            <div style={{ display: "flex", gap: 12, marginTop: 8, flexWrap: "wrap" }}>{rd.factors.map(([l, v, g], i) => <Mini key={i} label={l} v={v} good={g} />)}</div>
+          </div>
+        </Card>
+      )}
       <Label style={{ margin: "0 4px 8px" }}>Heute · aus Apple Health</Label>
       <div style={{ display: "flex", gap: 9, marginBottom: 14 }}>
         <Stat label="Aktiv-kcal" value={dash(act)} accent />
@@ -1234,6 +1353,7 @@ const RecCard = ({ Icon, c, t }) => <div style={{ display: "flex", gap: 11, alig
 
 /* ================= ANALYSE ================= */
 function Analyse({ data }) {
+  const set = data.settings;
   const days = Array.from({ length: 7 }, (_, i) => dstr(i)); // heute … -6 Tage
   const ctxOf = (d) => data.context[d] || {};
   const nums = (key) => days.map((d) => ctxOf(d)[key]).filter((v) => typeof v === "number");
@@ -1241,6 +1361,8 @@ function Analyse({ data }) {
   const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
   const workoutsWk = (data.workouts || []).filter((w) => days.includes(w.date));
   const protDays = days.map((d) => { const n = data.nutrition[d]; if (!n) return null; const p = [].concat(...MEALS.map(([k]) => n[k] || [])).reduce((a, m) => a + m.p, 0); return p > 0 ? p : null; }).filter((v) => v != null);
+  const kcalDays = days.map((d) => { const n = data.nutrition[d]; if (!n) return null; const k = [].concat(...MEALS.map(([kk]) => n[kk] || [])).reduce((a, m) => a + m.k, 0); return k > 0 ? k : null; }).filter((v) => v != null);
+  const balDays = days.map((d) => { const n = data.nutrition[d]; if (!n) return null; const k = [].concat(...MEALS.map(([kk]) => n[kk] || [])).reduce((a, m) => a + m.k, 0); if (!k) return null; return k - (set.bmr + (actOf(data, d) || 0)); }).filter((v) => v != null);
   // Gewicht: neuester & ältester Wert im Fenster
   let curW = null, oldW = null;
   for (const d of days) { const w = ctxOf(d).weight; if (typeof w === "number") { if (curW == null) curW = w; oldW = w; } }
@@ -1269,7 +1391,20 @@ function Analyse({ data }) {
         </div>
       </Card>
 
-      <div style={{ fontSize: 11.5, color: H.faint, textAlign: "center", marginTop: 6, lineHeight: 1.5 }}>Basiert auf deinen echten Health- & App-Daten der letzten 7 Tage.<br />Wettkampf-Prognose kommt später mit richtiger Formel.</div>
+      <Label style={{ margin: "0 4px 8px" }}>Ernährung (Ø / erfasster Tag)</Label>
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", gap: 9 }}>
+          <Stat label="kcal Ø" value={kcalDays.length ? r0(avg(kcalDays)) : "—"} />
+          <Stat label="Protein Ø" value={protDays.length ? r0(avg(protDays)) + " g" : "—"} />
+          <Stat label="Bilanz Ø" value={balDays.length ? (avg(balDays) >= 0 ? "+" : "") + r0(avg(balDays)) : "—"} color={balDays.length && avg(balDays) <= 0 ? H.up : H.amber} />
+        </div>
+      </Card>
+
+      <AiAnalysis title="Wochen-Report" cta="KI: meine Woche auswerten" prompt={() => {
+        return "Erstelle einen kurzen Wochen-Report (letzte 7 Tage). Trainings: " + workoutsWk.length + ". Schlaf Ø " + (sleeps.length ? r1(avg(sleeps)) : "—") + " h. Ruhepuls Ø " + (rhrs.length ? r0(avg(rhrs)) : "—") + " bpm. Aktiv-Energie Summe " + (acts.length ? r0(acts.reduce((a, b) => a + b, 0)) : "—") + " kcal. Ernährung Ø " + (kcalDays.length ? r0(avg(kcalDays)) : "—") + " kcal / " + (protDays.length ? r0(avg(protDays)) : "—") + "g Protein, Bilanz Ø " + (balDays.length ? r0(avg(balDays)) : "—") + " kcal. Gewicht aktuell " + (curW != null ? curW + " kg" : "—") + ", 7-Tage-Trend " + (wChange == null ? "—" : (wChange > 0 ? "+" : "") + wChange + " kg") + ".\n\nGib 3-4 konkrete Beobachtungen + Fokus für nächste Woche.";
+      }} />
+
+      <div style={{ fontSize: 11.5, color: H.faint, textAlign: "center", marginTop: 4, lineHeight: 1.5 }}>Basiert auf deinen echten Health- & App-Daten der letzten 7 Tage.</div>
     </Page>
   );
 }
