@@ -347,20 +347,41 @@ function prList(data) {
   return Object.values(byEx).filter((r) => r.topW > 0).sort((a, b) => b.bestE - a.bestE);
 }
 
+/* ================= SPLASH ================= */
+function Splash() {
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "linear-gradient(160deg,#0C0A16,#07070B)", display: "grid", placeItems: "center", animation: "splashOut 1.65s ease forwards", pointerEvents: "none" }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20 }}>
+        <div style={{ width: 100, height: 100, borderRadius: 28, background: "linear-gradient(140deg,#9A8CFF,#6E5CFF 55%,#4A38C4)", boxShadow: "0 24px 60px -14px rgba(124,108,255,.7), inset 0 1px 0 rgba(255,255,255,.35)", display: "grid", placeItems: "center", animation: "popIn .6s cubic-bezier(.34,1.56,.64,1) both" }}>
+          <svg width="66" height="66" viewBox="0 0 512 512">
+            <polyline points="118,338 210,262 296,306 392,168" fill="none" stroke="#fff" strokeWidth="34" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="430" strokeDashoffset="430" style={{ animation: "draw .95s .25s cubic-bezier(.65,0,.35,1) forwards" }} />
+            <circle cx="392" cy="168" r="27" fill="#fff" style={{ opacity: 0, animation: "popDot .45s 1s forwards" }} />
+          </svg>
+        </div>
+        <div style={{ fontSize: 23, fontWeight: 820, letterSpacing: -0.5, color: "#fff", animation: "popIn .6s .35s both" }}>Performance OS</div>
+      </div>
+    </div>
+  );
+}
+
 /* ================= APP ================= */
 export default function App() {
   const [data, setData] = useState(null);
-  const [tab, setTab] = useState("food");
+  const [tab, setTab] = useState("home");
   const [active, setActive] = useState(null);
   const [chatOpen, setChatOpen] = useState(false);
+  const [splash, setSplash] = useState(true);
   const [msgs, setMsgs] = useState([{ role: "assistant", content: "Moin Felix! Frag mich was zu Training, Ernährung oder Recovery — oder schick mir, was du isst (z.B. Döner mit allem) für eine schnelle Schätzung." }]);
   useEffect(() => { load().then(setData); }, []);
-  if (!data) return <div style={{ background: H.bg, minHeight: "100dvh" }} />;
+  useEffect(() => { const t = setTimeout(() => setSplash(false), 1650); return () => clearTimeout(t); }, []);
+  if (!data) return <div style={{ background: H.bg, minHeight: "100dvh" }}>{splash && <Splash />}</div>;
   const commit = (d) => { setData(d); persist(d); };
 
   return (
     <div style={{ position: "relative", minHeight: "100dvh", background: "linear-gradient(180deg,#0A0A12 0%,#07070B 60%,#050509 100%)", fontFamily: "var(--font-manrope), -apple-system, ui-sans-serif, sans-serif", color: H.text }}>
       <Style />
+      {splash && <Splash />}
+      <div className="rotate-hint">📱 Bitte im Hochformat nutzen — Performance OS ist fürs Hochformat gebaut.</div>
       {/* Farb-Glow-Ebene für Tiefe hinter dem Glas */}
       <div aria-hidden style={{ position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none",
         background: "radial-gradient(120% 55% at 50% -8%, rgba(124,108,255,0.22), transparent 60%), radial-gradient(90% 45% at 85% 6%, rgba(167,139,250,0.14), transparent 55%)" }} />
@@ -1405,9 +1426,20 @@ function Home({ data, commit }) {
   const lastW = (data.workouts || [])[data.workouts.length - 1] || null;
   const dash = (v, suf = "") => (v == null || v === "" ? "—" : v + suf);
   const rd = readiness(data);
+  const h = new Date().getHours();
+  const greet = (h < 11 ? "Guten Morgen" : h < 18 ? "Guten Tag" : "Guten Abend") + ", Felix";
+  const dateStr = new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
+  const sumParts = [];
+  if (rd.has) sumParts.push("Readiness " + rd.score);
+  sumParts.push(pLeft > 0 ? "noch " + pLeft + " g Protein" : "Protein-Ziel ✓");
+  if (act != null) sumParts.push(kLeft >= 0 ? kLeft + " kcal übrig" : Math.abs(kLeft) + " kcal drüber");
+  const summary = sumParts.join("  ·  ");
 
   return (
-    <Page title="Heute" sub={new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })}>
+    <Page title={greet} subEl={<div>
+      <div style={{ fontSize: 13, color: H.faint }}>{dateStr}</div>
+      <div style={{ fontSize: 14, color: H.sub, marginTop: 3, fontWeight: 600 }}>{summary}</div>
+    </div>}>
       <HrvPrompt data={data} commit={commit} />
       {rd.has && (
         <Card style={{ marginBottom: 14 }}>
@@ -1602,5 +1634,13 @@ const Style = () => (<style>{`
   .rise > *:nth-child(6){animation-delay:.2s} .rise > *:nth-child(n+7){animation-delay:.24s}
   @keyframes fadeIn{ from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none} }
   @keyframes rise{ from{opacity:0; transform:translateY(12px) scale(.99)} to{opacity:1; transform:none} }
+  @keyframes popIn{ from{opacity:0; transform:scale(.8)} to{opacity:1; transform:scale(1)} }
+  @keyframes popDot{ from{opacity:0; transform:scale(.4)} to{opacity:1; transform:scale(1)} }
+  @keyframes draw{ to{ stroke-dashoffset:0 } }
+  @keyframes splashOut{ 0%,62%{opacity:1} 100%{opacity:0} }
+  .rotate-hint{ display:none }
+  @media screen and (orientation:landscape) and (max-height:560px){
+    .rotate-hint{ display:flex; position:fixed; inset:0; z-index:300; background:#07070B; color:#F4F3F8; align-items:center; justify-content:center; text-align:center; padding:28px; font-size:16px; font-weight:700; line-height:1.5; }
+  }
   @media (prefers-reduced-motion: reduce){.b,circle,.press,.fade-in,.rise>*{transition:none;animation:none}}
 `}</style>);
