@@ -79,7 +79,24 @@ const seed = () => ({
 let MEM = null;
 let userId = null;
 const supabase = createClient();
-function migrate(d) { const s = seed(); return { ...s, ...d, settings: { ...s.settings, ...(d.settings || {}) }, plan: d.plan || s.plan, context: { ...s.context, ...(d.context || {}) } }; }
+// Stabile ID für Tagebuch-Einträge (damit der Coach sie ändern/löschen kann).
+let _idc = 0;
+const mkid = () => "e" + Date.now().toString(36) + (_idc++).toString(36) + Math.floor(Math.random() * 1296).toString(36);
+function migrate(d) {
+  const s = seed();
+  const m = { ...s, ...d, settings: { ...s.settings, ...(d.settings || {}) }, plan: d.plan || s.plan, context: { ...s.context, ...(d.context || {}) } };
+  // Bestehenden Einträgen ohne id eine geben (Backfill).
+  const nut = { ...(m.nutrition || {}) };
+  for (const day of Object.keys(nut)) {
+    const dd = { ...nut[day] };
+    for (const [mk] of MEALS) {
+      if (Array.isArray(dd[mk])) dd[mk] = dd[mk].map((e) => (e && e.id ? e : { ...e, id: mkid() }));
+    }
+    nut[day] = dd;
+  }
+  m.nutrition = nut;
+  return m;
+}
 
 // Merge der Apple-Health-Daten (daily_context) in den App-Zustand.
 function mergeContext(d, ctxRows) {
@@ -157,7 +174,7 @@ async function estimateFood(text) {
   const o = JSON.parse(out.replace(/```json|```/g, "").trim());
   return { n: o.n, p: Math.round(o.p), f: Math.round(o.f), c: Math.round(o.c), k: Math.round(o.k), ai: true };
 }
-const COACH_SYS = "Du bist der KI-Coach & Datenanalyst in Felix' privatem Performance OS. Felix ist pescetarischer Ironman-Triathlet, 26, 186 cm, ~83 kg. Er trainiert Schwimmen, Rad, Laufen, Kraft, Calisthenics.\n\nWICHTIG: Im Abschnitt AKTUELLE DATEN bekommst du seinen ECHTEN, VOLLSTÄNDIGEN Verlauf: Gewichtstrend über Wochen, tägliche Health-Metriken (Aktiv-kcal, Schlaf, Ruhepuls, HRV, Gewicht) der letzten ~3 Wochen, Ernährungshistorie der letzten 14 Tage (kcal/Protein/Bilanz) und die letzten Trainings mit Sätzen/Volumen. NUTZE diese Daten aktiv für tiefe, konkrete Auswertungen — Trends, Muster, Zusammenhänge (z.B. Gewicht vs. Kalorienbilanz, Schlaf/HRV vs. Trainingsleistung, Volumen-Progression). Behaupte NIEMALS, du hättest keine Historie oder keinen Zugriff — schau IMMER zuerst in die AKTUELLE DATEN, bevor du das sagst. Wenn ein konkreter Wert wirklich fehlt (z.B. '—'), benenne genau welcher.\n\nDu kannst aktiv in der App handeln über Tools:\n- log_meal: Gegessenes ins Tagebuch eintragen — für heute ODER rückwirkend (Feld 'date', YYYY-MM-DD, z.B. gestern). Bei zusammengesetzten Mahlzeiten JEDE Zutat als EIGENEN log_meal-Aufruf (nicht zusammenfassen), je mit Menge/Einheit + eigenen Nährwerten.\n- create_food: ein festes Lebensmittel dauerhaft in Felix' Bibliothek anlegen, Nährwerte pro Referenzmenge.\n- adjust_activity: Aktiv-kcal (Coros/Apple Health) manuell korrigieren, auch rückwirkend per 'date' — z.B. 'addiere 500 kcal' → mode 'add', kcal 500.\nWenn du ein Tool sinnvoll einsetzen kannst, TU es direkt, statt Ausreden zu machen. Sei ein ehrlicher, fordernder Coach: klare Einordnung, konkrete Zahlen, umsetzbare Empfehlungen. Antworte auf Deutsch in der Du-Form. Kein Ersatz für Arzt bei medizinischen Fragen.";
+const COACH_SYS = "Du bist der KI-Coach & Datenanalyst in Felix' privatem Performance OS. Felix ist pescetarischer Ironman-Triathlet, 26, 186 cm, ~83 kg. Er trainiert Schwimmen, Rad, Laufen, Kraft, Calisthenics.\n\nWICHTIG: Im Abschnitt AKTUELLE DATEN bekommst du seinen ECHTEN, VOLLSTÄNDIGEN Verlauf: Gewichtstrend über Wochen, tägliche Health-Metriken (Aktiv-kcal, Schlaf, Ruhepuls, HRV, Gewicht) der letzten ~3 Wochen, Ernährungshistorie der letzten 14 Tage (kcal/Protein/Bilanz) und die letzten Trainings mit Sätzen/Volumen. NUTZE diese Daten aktiv für tiefe, konkrete Auswertungen — Trends, Muster, Zusammenhänge (z.B. Gewicht vs. Kalorienbilanz, Schlaf/HRV vs. Trainingsleistung, Volumen-Progression). Behaupte NIEMALS, du hättest keine Historie oder keinen Zugriff — schau IMMER zuerst in die AKTUELLE DATEN, bevor du das sagst. Wenn ein konkreter Wert wirklich fehlt (z.B. '—'), benenne genau welcher.\n\nDu kannst aktiv in der App handeln über Tools:\n- log_meal: Gegessenes ins Tagebuch eintragen — für heute ODER rückwirkend (Feld 'date', YYYY-MM-DD, z.B. gestern). Bei zusammengesetzten Mahlzeiten JEDE Zutat als EIGENEN log_meal-Aufruf (nicht zusammenfassen), je mit Menge/Einheit + eigenen Nährwerten.\n- update_meal / delete_meal: bestehende Tagebuch-Einträge ändern oder löschen — anhand der [id: ...], die im Kontext hinter jedem Eintrag steht. Damit kannst du Mengen korrigieren, Werte anpassen oder Einträge entfernen.\n- create_food: ein festes Lebensmittel dauerhaft in Felix' Bibliothek anlegen, Nährwerte pro Referenzmenge.\n- adjust_activity: Aktiv-kcal (Coros/Apple Health) manuell korrigieren, auch rückwirkend per 'date' — z.B. 'addiere 500 kcal' → mode 'add', kcal 500.\nWenn du ein Tool sinnvoll einsetzen kannst, TU es direkt, statt Ausreden zu machen. Sei ein ehrlicher, fordernder Coach: klare Einordnung, konkrete Zahlen, umsetzbare Empfehlungen. Antworte auf Deutsch in der Du-Form. Kein Ersatz für Arzt bei medizinischen Fragen.";
 
 // Baut aus dem echten App-Zustand einen REICHEN Live-Kontext für den Coach:
 // Ziele, Heute-Detail, Gewichtsverlauf, Health-Metriken über Wochen,
@@ -179,6 +196,18 @@ function buildCoachContext(data) {
   L.push("Ziele: Grundumsatz " + s.bmr + " kcal, Protein " + s.protein + "g (fix), Fett " + s.fat + "g (fix), Kohlenhydrate = Rest-Kalorien/4 (heute Ziel " + carbGoal + "g).");
   L.push("Gegessen: " + eaten.k + " kcal (" + eaten.p + "g P, " + eaten.f + "g F, " + eaten.c + "g KH). Mahlzeiten: " + (meals.length ? meals.join(" | ") : "noch nichts"));
   L.push("Aktiv-kcal: " + num(act) + ", Gesamtverbrauch " + verbrauch + " kcal, Bilanz " + (eaten.k - verbrauch) + " kcal. Noch offen: " + Math.max(0, s.protein - eaten.p) + "g Protein, " + (verbrauch - eaten.k) + " kcal.");
+
+  // Einzel-Einträge mit id (für update_meal/delete_meal) — heute + gestern.
+  const entryLines = (dd) => {
+    const nn = data.nutrition[dd]; if (!nn) return [];
+    const out = [];
+    for (const [mk, label] of MEALS) for (const e of (nn[mk] || [])) out.push("  " + label + " › " + e.n + " (" + e.k + " kcal, " + e.p + "g P) [id: " + (e.id || "?") + "]");
+    return out;
+  };
+  const todayEntries = entryLines(today);
+  if (todayEntries.length) { L.push("Einträge heute (per id änderbar/löschbar):"); L.push(todayEntries.join("\n")); }
+  const yEntries = entryLines(dstr(1));
+  if (yEntries.length) { L.push("Einträge gestern (" + dstr(1) + "):"); L.push(yEntries.join("\n")); }
   if (ctx.sleep != null) L.push("Schlaf letzte Nacht: " + ctx.sleep + " h.");
   if (ctx.rhf != null) L.push("Ruhepuls: " + ctx.rhf + " bpm." + (ctx.hrv != null ? " HRV: " + ctx.hrv + " ms." : ""));
 
@@ -302,7 +331,7 @@ function Coach({ msgs, setMsgs, close, data, commit }) {
           const amt = dec(inp.amount) || 1; const unit = inp.unit || "Portion";
           const base = { k: Math.round(dec(inp.kcal)), p: Math.round(dec(inp.protein)), f: Math.round(dec(inp.fat)), c: Math.round(dec(inp.carbs)) };
           const label = String(inp.name || "Mahlzeit") + (inp.amount ? " · " + amt + " " + (UNIT_LABEL[unit] || unit) : "");
-          const e = { n: label, k: base.k, p: base.p, f: base.f, c: base.c, ai: true, amount: amt, unit, per: amt, base };
+          const e = { id: mkid(), n: label, k: base.k, p: base.p, f: base.f, c: base.c, ai: true, amount: amt, unit, per: amt, base };
           const day = d.nutrition[mday] || emptyDay();
           d = { ...d, nutrition: { ...d.nutrition, [mday]: { ...day, [meal]: [...(day[meal] || []), e] } } };
           results.push({ id: b.id, content: "Eingetragen für " + (mday === today ? "heute" : mday) + ": " + label + " (" + base.k + " kcal, " + base.p + "g P)." });
@@ -318,6 +347,44 @@ function Coach({ msgs, setMsgs, close, data, commit }) {
           const f = { name: String(inp.name || "").trim(), brand: (inp.brand || "").trim() || null, barcode: null, base_unit: inp.base_unit || "g", per: dec(inp.per) || 100, kcal: dec(inp.kcal), protein: dec(inp.protein), fat: dec(inp.fat), carbs: dec(inp.carbs) };
           try { const { data: { user } } = await supabase.auth.getUser(); if (user) await supabase.from("foods").insert({ ...f, user_id: user.id }); } catch (e) {}
           results.push({ id: b.id, content: 'Lebensmittel "' + f.name + '" in der Bibliothek angelegt (' + f.kcal + " kcal / " + f.per + " " + f.base_unit + ")." });
+        } else if (b.name === "delete_meal") {
+          const tid = String(inp.id || ""); let found = false; const nn = { ...d.nutrition };
+          for (const dd of Object.keys(nn)) {
+            const day = nn[dd]; const nd = { ...day }; let changed = false;
+            for (const [mk] of MEALS) { const arr = day[mk] || []; if (arr.some((x) => x.id === tid)) { nd[mk] = arr.filter((x) => x.id !== tid); changed = true; found = true; } }
+            if (changed) nn[dd] = nd;
+          }
+          if (found) d = { ...d, nutrition: nn };
+          results.push({ id: b.id, content: found ? "Eintrag gelöscht." : "Kein Eintrag mit dieser id gefunden." });
+        } else if (b.name === "update_meal") {
+          const tid = String(inp.id || ""); let found = false; const nn = { ...d.nutrition };
+          for (const dd of Object.keys(nn)) {
+            const day = nn[dd]; const nd = { ...day }; let changed = false;
+            for (const [mk] of MEALS) {
+              const arr = day[mk] || []; const idx = arr.findIndex((x) => x.id === tid);
+              if (idx >= 0) {
+                const cur = arr[idx];
+                const namePart = inp.name != null ? String(inp.name) : (cur.n || "").split(" · ")[0];
+                const unit = inp.unit || cur.unit || "Portion";
+                const amount = inp.amount != null ? dec(inp.amount) : cur.amount;
+                let k = cur.k, p = cur.p, f = cur.f, c = cur.c;
+                if (inp.kcal != null || inp.protein != null || inp.fat != null || inp.carbs != null) {
+                  if (inp.kcal != null) k = Math.round(dec(inp.kcal));
+                  if (inp.protein != null) p = Math.round(dec(inp.protein));
+                  if (inp.fat != null) f = Math.round(dec(inp.fat));
+                  if (inp.carbs != null) c = Math.round(dec(inp.carbs));
+                } else if (inp.amount != null && cur.base && cur.per) {
+                  const factor = dec(inp.amount) / (cur.per || 1);
+                  k = Math.round(cur.base.k * factor); p = Math.round(cur.base.p * factor); f = Math.round(cur.base.f * factor); c = Math.round(cur.base.c * factor);
+                }
+                const label = namePart + (amount != null ? " · " + amount + " " + (UNIT_LABEL[unit] || unit) : "");
+                nd[mk] = arr.map((x, j) => (j === idx ? { ...cur, n: label, k, p, f, c, amount, unit } : x)); changed = true; found = true;
+              }
+            }
+            if (changed) nn[dd] = nd;
+          }
+          if (found) d = { ...d, nutrition: nn };
+          results.push({ id: b.id, content: found ? "Eintrag aktualisiert." : "Kein Eintrag mit dieser id gefunden." });
         } else { results.push({ id: b.id, content: "OK." }); }
       } catch (e) { results.push({ id: b.id, content: "Aktion fehlgeschlagen." }); }
     }
@@ -589,11 +656,16 @@ function SetTable({ sets, onChange, last }) {
   const add = () => onChange([...sets, { w: "", r: "" }]); const upd = (i, k, v) => onChange(sets.map((s, j) => (j === i ? { ...s, [k]: v } : s))); const del = (i) => onChange(sets.filter((_, j) => j !== i));
   return (<>
     <div style={{ display: "grid", gridTemplateColumns: "26px 1fr 1fr 30px", gap: 8, margin: "12px 0 2px" }}>{["SATZ", "KG", "WDH", ""].map((h, i) => <span key={i} style={{ fontSize: 10, letterSpacing: 1, color: H.faint, fontWeight: 700, textAlign: i ? "left" : "center" }}>{h}</span>)}</div>
-    {sets.map((s, i) => { const done = s.w && s.r; const lp = last && last[i]; return (
+    {sets.map((s, i) => {
+      const done = s.w && s.r; const lp = last && last[i];
+      // Hevy-Style: kg/Wdh grün wenn mehr als letzte Session, rot wenn weniger.
+      const cmp = (val, prev) => { if (val === "" || val == null || !lp || prev == null) return null; const n = dec(val); if (n > prev) return H.up; if (n < prev) return H.down; return null; };
+      const wCol = cmp(s.w, lp && lp.w), rCol = cmp(s.r, lp && lp.r);
+      return (
       <div key={i} style={{ display: "grid", gridTemplateColumns: "26px 1fr 1fr 30px", gap: 8, alignItems: "center", padding: "5px 0", background: done ? H.blueSoft : "transparent", borderRadius: 8 }}>
         <span style={{ width: 24, height: 24, borderRadius: 7, display: "grid", placeItems: "center", fontSize: 12, fontWeight: 750, margin: "0 auto", background: done ? H.blue : H.bg2, color: done ? "#fff" : H.sub }}>{i + 1}</span>
-        <input value={s.w} onChange={(e) => upd(i, "w", e.target.value)} inputMode="decimal" placeholder={lp ? String(lp.w) : "kg"} className="fld" style={numStyle} />
-        <input value={s.r} onChange={(e) => upd(i, "r", e.target.value)} inputMode="numeric" placeholder={lp ? String(lp.r) : "Wdh"} className="fld" style={numStyle} />
+        <input value={s.w} onChange={(e) => upd(i, "w", e.target.value)} inputMode="decimal" placeholder={lp ? String(lp.w) : "kg"} className="fld" style={{ ...numStyle, color: wCol || numStyle.color }} />
+        <input value={s.r} onChange={(e) => upd(i, "r", e.target.value)} inputMode="numeric" placeholder={lp ? String(lp.r) : "Wdh"} className="fld" style={{ ...numStyle, color: rCol || numStyle.color }} />
         <button onClick={() => del(i)} className="press" style={{ all: "unset", cursor: "pointer", textAlign: "center", color: H.faint, fontSize: 17 }}>×</button>
       </div>); })}
     <button onClick={add} className="addset" style={{ width: "100%", marginTop: 9, padding: 10, borderRadius: 11, border: "1px solid " + H.line, background: "transparent", cursor: "pointer", color: H.blue, fontSize: 13, fontWeight: 700 }}>+ Satz</button>
@@ -920,6 +992,7 @@ function AddFood({ mealLabel, onAdd, close, data, commit }) {
   const addPortion = () => {
     if (!selected) return;
     onAdd({
+      id: mkid(),
       n: selected.name + " · " + amount + " " + (UNIT_LABEL[selected.base_unit] || selected.base_unit),
       p: sc(selected.protein), f: sc(selected.fat), c: sc(selected.carbs), k: sc(selected.kcal),
       amount: dec(amount), unit: selected.base_unit, per: dec(selected.per) || 1,
@@ -947,7 +1020,7 @@ function AddFood({ mealLabel, onAdd, close, data, commit }) {
     setScanBusy(false);
   };
 
-  const est = async () => { if (!text.trim()) return; setAiBusy(true); setErr(""); try { const r = await estimateFood(text.trim()); onAdd({ ...r, amount: 1, unit: "Portion", per: 1, base: { k: r.k, p: r.p, f: r.f, c: r.c } }); close(); } catch (e) { setErr("KI-Schätzung fehlgeschlagen."); setAiBusy(false); } };
+  const est = async () => { if (!text.trim()) return; setAiBusy(true); setErr(""); try { const r = await estimateFood(text.trim()); onAdd({ id: mkid(), ...r, amount: 1, unit: "Portion", per: 1, base: { k: r.k, p: r.p, f: r.f, c: r.c } }); close(); } catch (e) { setErr("KI-Schätzung fehlgeschlagen."); setAiBusy(false); } };
 
   const uf = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const title = mode === "portion" ? "Menge wählen" : mode === "create" ? "Lebensmittel anlegen" : mode === "scan" ? "Barcode scannen" : "Hinzufügen · " + mealLabel;

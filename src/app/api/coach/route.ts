@@ -51,6 +51,35 @@ const TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "delete_meal",
+    description:
+      "Löscht einen bestehenden Eintrag aus dem Ernährungstagebuch anhand seiner id. Die ids stehen im Kontext hinter jedem Eintrag als [id: ...]. Nutze das, wenn Felix einen Eintrag entfernen will.",
+    input_schema: {
+      type: "object",
+      properties: { id: { type: "string", description: "Eintrags-id aus dem Kontext (z.B. [id: exyz])" } },
+      required: ["id"],
+    },
+  },
+  {
+    name: "update_meal",
+    description:
+      "Ändert einen bestehenden Tagebuch-Eintrag anhand seiner id (aus dem Kontext, [id: ...]). Gib nur die Felder an, die sich ändern. Wenn nur 'amount' geändert wird, werden die Makros automatisch aus der ursprünglichen Referenzmenge skaliert; alternativ direkt neue kcal/Nährwerte setzen.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Eintrags-id aus dem Kontext" },
+        name: { type: "string", description: "Neuer Name (optional)" },
+        amount: { type: "number", description: "Neue Menge (optional)" },
+        unit: { type: "string", enum: ["g", "ml", "piece", "Portion"], description: "Einheit (optional)" },
+        kcal: { type: "number", description: "Neue Kalorien (optional)" },
+        protein: { type: "number", description: "Neues Protein g (optional)" },
+        fat: { type: "number", description: "Neues Fett g (optional)" },
+        carbs: { type: "number", description: "Neue Kohlenhydrate g (optional)" },
+      },
+      required: ["id"],
+    },
+  },
+  {
     name: "adjust_activity",
     description:
       "Passt die Aktivitätsenergie (Aktiv-kcal aus Coros/Apple Health) in Performance OS manuell an — für den Fall, dass Coros falsch/unvollständig übertragen hat. mode 'add' addiert kcal drauf (auch negativ zum Abziehen), mode 'set' setzt einen absoluten Aktiv-kcal-Wert. Standard-Tag ist heute. Die Korrektur überlebt spätere Health-Syncs.",
