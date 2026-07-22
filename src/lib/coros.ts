@@ -118,17 +118,21 @@ export async function corosTool(token: string, name: string, args: Record<string
     body: JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method: "tools/call", params: { name, arguments: args } }),
     signal: AbortSignal.timeout(20000),
   });
-  const ct = res.headers.get("content-type") || "";
+  const raw = await res.text();
+  if (!raw || !raw.trim()) throw new Error("mcp: leere Antwort (HTTP " + res.status + ", ct=" + (res.headers.get("content-type") || "?") + ")");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let payload: any = null;
-  if (ct.includes("text/event-stream")) {
-    const txt = await res.text();
-    const dataLines = txt.split(/\r?\n/).filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trim());
-    for (const d of dataLines.reverse()) { try { const j = JSON.parse(d); if (j.result || j.error) { payload = j; break; } } catch { /* skip */ } }
-  } else {
-    payload = await res.json();
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    // SSE: JSON steckt in einer oder mehreren data:-Zeilen
+    const dataParts = raw.split(/\r?\n/).filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trim());
+    // erst zusammengefügt versuchen, dann einzeln (rückwärts)
+    const joined = dataParts.join("");
+    try { payload = JSON.parse(joined); } catch { /* try lines */ }
+    if (!payload) for (const d of dataParts.reverse()) { try { const j = JSON.parse(d); if (j.result || j.error) { payload = j; break; } } catch { /* skip */ } }
   }
-  if (!payload) throw new Error("mcp: leere Antwort (HTTP " + res.status + ")");
+  if (!payload) throw new Error("mcp: unlesbare Antwort (HTTP " + res.status + "): " + raw.slice(0, 160));
   if (payload.error) throw new Error("mcp error: " + JSON.stringify(payload.error));
   const content = payload.result?.content;
   if (Array.isArray(content)) return content.filter((c: { type: string }) => c.type === "text").map((c: { text: string }) => c.text).join("\n");
