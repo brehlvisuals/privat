@@ -148,6 +148,7 @@ async function load() {
     }
     const { data: ctxRows } = await supabase.from("daily_context").select("*").eq("user_id", user.id);
     d = mergeContext(d, ctxRows);
+    try { const { data: snap } = await supabase.from("coros_snapshot").select("data").eq("user_id", user.id).maybeSingle(); if (snap && snap.data) d.coros = snap.data; } catch (e) {}
     MEM = d;
     return d;
   } catch (e) { return MEM || s; }
@@ -1446,13 +1447,27 @@ function Home({ data, commit }) {
   sumParts.push(pLeft > 0 ? "noch " + pLeft + " g Protein" : "Protein-Ziel ✓");
   if (act != null) sumParts.push(kLeft >= 0 ? kLeft + " kcal übrig" : Math.abs(kLeft) + " kcal drüber");
   const summary = sumParts.join("  ·  ");
+  const c0 = data.coros || {}; const rec = c0.recovery; const fit = c0.fitness;
+  const expDays = c0.access_expires ? Math.floor((c0.access_expires - Date.now()) / 864e5) : null;
+  const needReauth = expDays != null && expDays <= 5;
 
   return (
     <Page title={greet} subEl={<div>
       <div style={{ fontSize: 13, color: H.faint }}>{dateStr}</div>
       <div style={{ fontSize: 14, color: H.sub, marginTop: 3, fontWeight: 600 }}>{summary}</div>
     </div>}>
-      <HrvPrompt data={data} commit={commit} />
+      {needReauth && (
+        <a href="/api/coros/connect" style={{ textDecoration: "none", display: "block", marginBottom: 14 }}>
+          <div className="press" style={{ background: H.amber + "22", border: "1px solid " + H.amber + "66", borderRadius: 14, padding: "12px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 18 }}>🔗</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 750, color: H.text }}>Coros-Verbindung {expDays <= 0 ? "abgelaufen" : "läuft in " + expDays + " Tag" + (expDays === 1 ? "" : "en") + " ab"}</div>
+              <div style={{ fontSize: 12, color: H.sub }}>Tippen zum Erneuern (10 Sek.)</div>
+            </div>
+            <ChevronRight size={16} color={H.amber} />
+          </div>
+        </a>
+      )}
       {rd.has && (
         <Card style={{ marginBottom: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -1466,7 +1481,26 @@ function Home({ data, commit }) {
           {rd.note && <div style={{ fontSize: 12.5, color: H.sub, lineHeight: 1.5, marginTop: 12, paddingTop: 12, borderTop: "1px solid " + H.line }}>ℹ️ {rd.note}</div>}
         </Card>
       )}
-      <Label style={{ margin: "0 4px 8px" }}>Heute · aus Apple Health</Label>
+      {(rec || (fit && fit.vo2max)) && (
+        <Card style={{ marginBottom: 14 }}>
+          <Label style={{ marginBottom: 10 }}>Coros · aktueller Zustand</Label>
+          <div style={{ display: "flex", gap: 9 }}>
+            {rec && <Stat label="Recovery" value={rec.pct + "%"} accent />}
+            {fit && fit.vo2max && <Stat label="VO₂max" value={fit.vo2max} />}
+            {fit && fit.threshold && <Stat label="Schwelle" value={fit.threshold} />}
+          </div>
+          {rec && rec.level && <div style={{ fontSize: 12.5, color: H.sub, marginTop: 10 }}>{rec.level}{rec.full ? " · voll erholt in " + rec.full : ""}</div>}
+          {fit && (fit.pred5k || fit.predM) && (
+            <div style={{ display: "flex", gap: 12, marginTop: 10, paddingTop: 10, borderTop: "1px solid " + H.line, flexWrap: "wrap" }}>
+              {fit.pred5k && <Mini label="5 km" v={fit.pred5k} />}
+              {fit.pred10k && <Mini label="10 km" v={fit.pred10k} />}
+              {fit.predHM && <Mini label="Halbm." v={fit.predHM} />}
+              {fit.predM && <Mini label="Marathon" v={fit.predM} />}
+            </div>
+          )}
+        </Card>
+      )}
+      <Label style={{ margin: "0 4px 8px" }}>Heute · Coros{ctx.weight != null ? " · Gewicht: Apple Health" : ""}</Label>
       <div style={{ display: "flex", gap: 9, marginBottom: 14 }}>
         <Stat label="Aktiv-kcal" value={dash(act)} accent />
         <Stat label="Schlaf" value={ctx.sleep != null ? ctx.sleep + " h" : "—"} />

@@ -68,11 +68,34 @@ async function run(request: Request) {
     .filter(([, r]) => r.activity_kcal != null || r.sleep_hours != null || r.resting_hr != null || r.hrv != null)
     .map(([date, r]) => ({ user_id: userId, date, source: "coros", ...r }));
 
-  if (!rows.length) return Response.json({ ok: true, synced: 0, note: "keine verwertbaren Coros-Daten" });
-
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { error } = await supabase.from("daily_context").upsert(rows, { onConflict: "user_id,date" });
-  if (error) return Response.json({ error: "db_write_failed", detail: error.message }, { status: 500 });
+  if (rows.length) {
+    const { error } = await supabase.from("daily_context").upsert(rows, { onConflict: "user_id,date" });
+    if (error) return Response.json({ error: "db_write_failed", detail: error.message }, { status: 500 });
+  }
 
-  return Response.json({ ok: true, synced: rows.length, days: rows.map((r) => r.date) });
+  // Aktuelle Kennzahlen (Recovery, Fitness/VO2max, Rennprognosen) als Snapshot.
+  let snapshotSaved = false;
+  try {
+    const recTxt = await corosTool(token, "queryRecoveryStatus", {});
+    const fitTxt = await corosTool(token, "queryFitnessAssessmentOverview", {});
+    const g = (txt: string, re: RegExp) => { const m = txt.match(re); return m ? m[1].trim() : null; };
+    const recPct = g(recTxt, /Recovery:\s*(\d+)\s*%/i);
+    const recovery = recPct ? { pct: parseInt(recPct, 10), level: g(recTxt, /Level:\s*([^\n]+)/i), full: g(recTxt, /Full Recovery:\s*([^\n]+)/i) } : null;
+    const vo2 = g(fitTxt, /VO2max:\s*([\d.]+)/i);
+    const fitness = {
+      vo2max: vo2 ? Number(vo2) : null,
+      runningLevel: g(fitTxt, /Running Level:\s*([\d.]+)/i),
+      threshold: g(fitTxt, /Threshold Pace:\s*([^\n]+)/i),
+      pred5k: g(fitTxt, /5\s*km Prediction:\s*([^\n]+)/i),
+      pred10k: g(fitTxt, /10\s*km Prediction:\s*([^\n]+)/i),
+      predHM: g(fitTxt, /Half Marathon Prediction:\s*([^\n]+)/i),
+      predM: g(fitTxt, /Marathon Prediction:\s*([^\n]+)/i),
+    };
+    const data = { recovery, fitness, access_expires: a0?.access_expires ?? null, synced_at: Date.now() };
+    await supabase.from("coros_snapshot").upsert({ user_id: userId, data, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+    snapshotSaved = true;
+  } catch { /* Snapshot ist optional — Tagesdaten sind das Wichtige */ }
+
+  return Response.json({ ok: true, synced: rows.length, days: rows.map((r) => r.date), snapshot: snapshotSaved });
 }
