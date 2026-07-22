@@ -9,7 +9,9 @@ const OAUTH = {
   token: "https://mcpeu.coros.com/oauth2/token",
   register: "https://mcpeu.coros.com/connect/register",
 };
-export const COROS_MCP_URL = "https://mcp.coros.com/mcp";
+// EU-direkter Endpoint: mcp.coros.com routet je nach Region und lehnt den
+// EU-ausgestellten Token aus US-Regionen (Vercel iad1) mit 401 ab.
+export const COROS_MCP_URL = "https://mcpeu.coros.com/mcp";
 export const COROS_SCOPE = "openid mcp.tools offline_access";
 
 function admin() {
