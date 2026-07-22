@@ -24,6 +24,8 @@ export type CorosAuth = {
   target_user_id: string; client_id: string | null; client_secret: string | null;
   refresh_token: string | null; redirect_uri: string | null; pkce_verifier: string | null; state: string | null;
   sync_secret?: string | null;
+  access_token?: string | null;
+  access_expires?: number | null;
 };
 
 export async function loadAuth(): Promise<CorosAuth | null> {
@@ -80,19 +82,28 @@ export async function exchangeCode(code: string, verifier: string, redirectUri: 
   const res = await fetch(OAUTH.token, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body });
   if (!res.ok) throw new Error("token exchange failed: " + res.status + " " + (await res.text()));
   const j = await res.json();
-  await saveAuth({ refresh_token: j.refresh_token, pkce_verifier: null, state: null });
+  const patch: Partial<CorosAuth> = { pkce_verifier: null, state: null };
+  if (j.refresh_token) patch.refresh_token = j.refresh_token;
+  if (j.access_token) { patch.access_token = j.access_token; patch.access_expires = Date.now() + (Number(j.expires_in || 3600) * 1000); }
+  await saveAuth(patch);
   return j;
 }
 
 export async function accessToken(): Promise<string> {
   const a = await loadAuth();
+  // 1) Noch gültigen Access-Token wiederverwenden (Coros' Refresh-Grant ist z.Zt. buggy → 500).
+  if (a?.access_token && a.access_expires && a.access_expires > Date.now() + 60_000) return a.access_token;
+  // 2) Sonst per Refresh erneuern.
   if (!a?.refresh_token) throw new Error("not_connected");
   const body = new URLSearchParams({ grant_type: "refresh_token", refresh_token: a.refresh_token, client_id: a.client_id! });
   if (a.client_secret) body.set("client_secret", a.client_secret);
   const res = await fetch(OAUTH.token, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body });
   if (!res.ok) throw new Error("refresh failed: " + res.status + " " + (await res.text()));
   const j = await res.json();
-  if (j.refresh_token && j.refresh_token !== a.refresh_token) await saveAuth({ refresh_token: j.refresh_token });
+  const patch: Partial<CorosAuth> = {};
+  if (j.refresh_token) patch.refresh_token = j.refresh_token;
+  if (j.access_token) { patch.access_token = j.access_token; patch.access_expires = Date.now() + (Number(j.expires_in || 3600) * 1000); }
+  if (Object.keys(patch).length) await saveAuth(patch);
   return j.access_token as string;
 }
 
