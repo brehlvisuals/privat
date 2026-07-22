@@ -3,8 +3,6 @@
 // Token/Client-Daten liegen in Supabase (coros_auth), nur per Service-Role zugänglich.
 
 import { createClient } from "@supabase/supabase-js";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 const OAUTH = {
   authorize: "https://mcpeu.coros.com/oauth2/authorize",
@@ -107,20 +105,32 @@ export async function accessToken(): Promise<string> {
   return j.access_token as string;
 }
 
-// Ruft ein Coros-MCP-Tool auf und gibt den Text-Output zurück.
+// Ruft ein Coros-MCP-Tool per direktem JSON-RPC auf (Coros-MCP ist stateless,
+// braucht keine Session — die offizielle SDK stolpert daran). Gibt den Text zurück.
 export async function corosTool(token: string, name: string, args: Record<string, unknown>): Promise<string> {
-  const transport = new StreamableHTTPClientTransport(new URL(COROS_MCP_URL), {
-    requestInit: { headers: { Authorization: "Bearer " + token } },
+  const res = await fetch(COROS_MCP_URL, {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + token,
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method: "tools/call", params: { name, arguments: args } }),
+    signal: AbortSignal.timeout(20000),
   });
-  const client = new Client({ name: "performance-os-sync", version: "1.0.0" }, { capabilities: {} });
-  await client.connect(transport);
-  try {
-    const res = await client.callTool({ name, arguments: args });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const content = (res as any).content;
-    if (Array.isArray(content)) return content.filter((c) => c.type === "text").map((c) => c.text).join("\n");
-    return typeof content === "string" ? content : JSON.stringify(content);
-  } finally {
-    try { await client.close(); } catch { /* ignore */ }
+  const ct = res.headers.get("content-type") || "";
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let payload: any = null;
+  if (ct.includes("text/event-stream")) {
+    const txt = await res.text();
+    const dataLines = txt.split(/\r?\n/).filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trim());
+    for (const d of dataLines.reverse()) { try { const j = JSON.parse(d); if (j.result || j.error) { payload = j; break; } } catch { /* skip */ } }
+  } else {
+    payload = await res.json();
   }
+  if (!payload) throw new Error("mcp: leere Antwort (HTTP " + res.status + ")");
+  if (payload.error) throw new Error("mcp error: " + JSON.stringify(payload.error));
+  const content = payload.result?.content;
+  if (Array.isArray(content)) return content.filter((c: { type: string }) => c.type === "text").map((c: { text: string }) => c.text).join("\n");
+  return typeof content === "string" ? content : JSON.stringify(content);
 }
