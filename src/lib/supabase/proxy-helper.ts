@@ -35,7 +35,8 @@ export async function updateSession(request: NextRequest) {
   const isPublic =
     path.startsWith("/login") ||
     path.startsWith("/auth") ||
-    path.startsWith("/api/health-sync");
+    path.startsWith("/api/health-sync") ||
+    path.startsWith("/api/coros");
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
