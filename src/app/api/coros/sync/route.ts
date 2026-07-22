@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { accessToken, corosTool } from "@/lib/coros";
+import { accessToken, corosTool, loadAuth } from "@/lib/coros";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -39,12 +39,15 @@ export async function POST(request: Request) { return run(request); }
 export async function GET(request: Request) { return run(request); }
 
 async function run(request: Request) {
-  const secret = process.env.CRON_SECRET;
   const auth = request.headers.get("authorization") || "";
+  const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   const key = new URL(request.url).searchParams.get("key") || "";
-  if (!secret || (auth !== "Bearer " + secret && key !== secret)) {
-    return Response.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const provided = bearer || key;
+  const a0 = await loadAuth();
+  const envSecret = process.env.CRON_SECRET || null;   // von Vercel-Cron automatisch als Bearer geschickt
+  const dbSecret = a0?.sync_secret || null;             // für manuellen Test ohne Vercel-Env
+  const ok = (!!envSecret && provided === envSecret) || (!!dbSecret && provided === dbSecret);
+  if (!ok) return Response.json({ error: "unauthorized" }, { status: 401 });
 
   let token: string;
   try { token = await accessToken(); }

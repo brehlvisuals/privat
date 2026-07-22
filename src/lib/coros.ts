@@ -22,6 +22,7 @@ function admin() {
 export type CorosAuth = {
   target_user_id: string; client_id: string | null; client_secret: string | null;
   refresh_token: string | null; redirect_uri: string | null; pkce_verifier: string | null; state: string | null;
+  sync_secret?: string | null;
 };
 
 export async function loadAuth(): Promise<CorosAuth | null> {
