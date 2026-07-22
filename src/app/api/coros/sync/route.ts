@@ -90,7 +90,7 @@ async function run(request: Request) {
       pred5k: g(fitTxt, /5\s*km Prediction:\s*([^\n]+)/i),
       pred10k: g(fitTxt, /10\s*km Prediction:\s*([^\n]+)/i),
       predHM: g(fitTxt, /Half Marathon Prediction:\s*([^\n]+)/i),
-      predM: g(fitTxt, /Marathon Prediction:\s*([^\n]+)/i),
+      predM: g(fitTxt, /(?<!Half )Marathon Prediction:\s*([^\n]+)/i),
     };
     const data = { recovery, fitness, access_expires: a0?.access_expires ?? null, synced_at: Date.now() };
     await supabase.from("coros_snapshot").upsert({ user_id: userId, data, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
