@@ -146,6 +146,9 @@ export async function corosTool(token: string, name: string, args: Record<string
   if (!payload) throw new Error("mcp: unlesbare Antwort (HTTP " + res.status + "): " + raw.slice(0, 160));
   if (payload.error) throw new Error("mcp error: " + JSON.stringify(payload.error));
   const content = payload.result?.content;
-  if (Array.isArray(content)) return content.filter((c: { type: string }) => c.type === "text").map((c: { text: string }) => c.text).join("\n");
+  // Coros verpackt den Text als JSON-String (mit \n als Escape) → entschachteln,
+  // damit echte Zeilenumbrüche entstehen und die Parser sauber greifen.
+  const unwrap = (t: string) => { try { if (typeof t === "string" && t.trim().startsWith('"')) return JSON.parse(t); } catch { /* keep */ } return t; };
+  if (Array.isArray(content)) return content.filter((c: { type: string }) => c.type === "text").map((c: { text: string }) => unwrap(c.text)).join("\n");
   return typeof content === "string" ? content : JSON.stringify(content);
 }
