@@ -91,20 +91,29 @@ export async function exchangeCode(code: string, verifier: string, redirectUri: 
 
 export async function accessToken(): Promise<string> {
   const a = await loadAuth();
-  // 1) Noch gültigen Access-Token wiederverwenden (Coros' Refresh-Grant ist z.Zt. buggy → 500).
-  if (a?.access_token && a.access_expires && a.access_expires > Date.now() + 60_000) return a.access_token;
-  // 2) Sonst per Refresh erneuern.
-  if (!a?.refresh_token) throw new Error("not_connected");
-  const body = new URLSearchParams({ grant_type: "refresh_token", refresh_token: a.refresh_token, client_id: a.client_id! });
-  if (a.client_secret) body.set("client_secret", a.client_secret);
-  const res = await fetch(OAUTH.token, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body });
-  if (!res.ok) throw new Error("refresh failed: " + res.status + " " + (await res.text()));
-  const j = await res.json();
-  const patch: Partial<CorosAuth> = {};
-  if (j.refresh_token) patch.refresh_token = j.refresh_token;
-  if (j.access_token) { patch.access_token = j.access_token; patch.access_expires = Date.now() + (Number(j.expires_in || 3600) * 1000); }
-  if (Object.keys(patch).length) await saveAuth(patch);
-  return j.access_token as string;
+  const validNow = !!(a?.access_token && a.access_expires && a.access_expires > Date.now() + 60_000);
+  // Token noch lange gültig (>7 Tage) → direkt nutzen.
+  if (validNow && a!.access_expires! > Date.now() + 7 * 864e5) return a!.access_token!;
+
+  // Sonst (bald ablaufend oder abgelaufen): Erneuerung VERSUCHEN.
+  // Wenn Coros ihren Refresh-Grant fixt, wird der Zugang dadurch automatisch dauerhaft.
+  if (a?.refresh_token) {
+    try {
+      const body = new URLSearchParams({ grant_type: "refresh_token", refresh_token: a.refresh_token, client_id: a.client_id! });
+      if (a.client_secret) body.set("client_secret", a.client_secret);
+      const res = await fetch(OAUTH.token, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body });
+      if (res.ok) {
+        const j = await res.json();
+        const patch: Partial<CorosAuth> = {};
+        if (j.refresh_token) patch.refresh_token = j.refresh_token;
+        if (j.access_token) { patch.access_token = j.access_token; patch.access_expires = Date.now() + (Number(j.expires_in || 3600) * 1000); }
+        if (patch.access_token) { await saveAuth(patch); return patch.access_token; }
+      }
+    } catch { /* Refresh (noch) kaputt bei Coros — Fallback unten */ }
+  }
+  // Erneuerung nicht möglich → gültigen Token weiterverwenden, solange vorhanden.
+  if (validNow) return a!.access_token!;
+  throw new Error("not_connected");
 }
 
 // Ruft ein Coros-MCP-Tool per direktem JSON-RPC auf (Coros-MCP ist stateless,
