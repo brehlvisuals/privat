@@ -12,6 +12,7 @@ const OAUTH = {
   register: "https://mcpeu.coros.com/connect/register",
 };
 export const COROS_MCP_URL = "https://mcp.coros.com/mcp";
+export const COROS_SCOPE = "openid mcp.tools offline_access";
 
 function admin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
@@ -59,6 +60,7 @@ export async function ensureClient(redirectUri: string): Promise<{ client_id: st
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
       token_endpoint_auth_method: "client_secret_post",
+      scope: COROS_SCOPE,
     }),
   });
   if (!res.ok) throw new Error("register failed: " + res.status + " " + (await res.text()));

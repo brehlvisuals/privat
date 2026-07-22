@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ensureClient, saveAuth, randomString, pkceChallenge } from "@/lib/coros";
+import { ensureClient, saveAuth, randomString, pkceChallenge, COROS_SCOPE } from "@/lib/coros";
 
 export const runtime = "nodejs";
 
@@ -21,6 +21,7 @@ export async function GET(request: Request) {
     u.searchParams.set("state", state);
     u.searchParams.set("code_challenge", challenge);
     u.searchParams.set("code_challenge_method", "S256");
+    u.searchParams.set("scope", COROS_SCOPE);
     return NextResponse.redirect(u.toString());
   } catch (e) {
     return NextResponse.json({ error: "connect failed", detail: String(e) }, { status: 500 });
