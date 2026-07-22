@@ -31,7 +31,8 @@ export async function loadAuth(): Promise<CorosAuth | null> {
   return (data as CorosAuth) || null;
 }
 export async function saveAuth(patch: Partial<CorosAuth>) {
-  await admin().from("coros_auth").upsert({ id: "singleton", updated_at: new Date().toISOString(), ...patch });
+  const { error } = await admin().from("coros_auth").upsert({ id: "singleton", updated_at: new Date().toISOString(), ...patch });
+  if (error) { console.error("coros saveAuth error:", error); throw new Error("saveAuth: " + error.message); }
 }
 
 // PKCE-Helfer
