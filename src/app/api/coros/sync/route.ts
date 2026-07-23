@@ -62,9 +62,9 @@ async function run(request: Request) {
 
   let hrvTxt = "", rhrTxt = "", dailyTxt = "";
   try {
-    hrvTxt = await corosTool(token, "querySleepHrv", { days: 3 });
-    rhrTxt = await corosTool(token, "queryRestingHeartRate", { days: 3 });
-    dailyTxt = await corosTool(token, "queryDailyHealthData", { days: 3 });
+    hrvTxt = await corosTool(token, "querySleepHrv", { days: 30 });
+    rhrTxt = await corosTool(token, "queryRestingHeartRate", { days: 30 });
+    dailyTxt = await corosTool(token, "queryDailyHealthData", { days: 30 });
   } catch (e) {
     return Response.json({ error: "coros_query_failed", detail: String(e) }, { status: 502 });
   }
