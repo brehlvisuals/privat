@@ -1613,9 +1613,37 @@ function Analyse({ data }) {
   );
 }
 
-/* ================= BIOLOGISCHES ALTER (Whoop-Style) ================= */
-// Modell nach WHOOP-Prinzip: chronologisches Alter, angepasst durch Metriken
-// mit Referenzwerten (über Referenz = jünger, drunter = älter). Aus Coros-Daten.
+/* ================= BIOLOGISCHES ALTER ================= */
+// Metrik-Katalog: ref = neutraler Referenzwert (= dein chronologisches Alter),
+// opt = erstrebenswerter Zielwert, dir = ob hoch oder niedrig besser ist,
+// span = Wertebereich für ±weight Jahre, weight = max. Einfluss in Jahren.
+// why/tips versorgen die Detailansicht mit Erklärung und Handlungstipps.
+const AGE_METRICS = [
+  { key: "vo2", label: "VO₂max", unit: "", ref: 50, opt: 57, dir: "high", span: 15, weight: 4,
+    why: "Die maximale Sauerstoffaufnahme – der stärkste Einzel-Marker für Fitness und Lebenserwartung. Ab ~30 sinkt sie normal um ca. 1 % pro Jahr.",
+    tips: ["1–2× / Woche harte Intervalle (Zone 4–5)", "Viel lockere Grundlage in Zone 2", "Regelmäßig statt in Schüben trainieren"] },
+  { key: "rhf", label: "Ruhepuls", unit: " bpm", ref: 52, opt: 45, dir: "low", span: 14, weight: 2.5,
+    why: "Puls in Ruhe (morgens). Niedriger = ein starkes, effizientes Herz. Steigt bei Stress, Alkohol, Infekt oder zu wenig Schlaf.",
+    tips: ["Mehr Zone-2-Ausdauer", "Alkohol & späte, große Mahlzeiten reduzieren", "Auf Erholung & Schlaf achten"] },
+  { key: "hrv", label: "HRV", unit: " ms", ref: 70, opt: 100, dir: "high", span: 50, weight: 2,
+    why: "Herzratenvariabilität – Zeichen eines erholten, anpassungsfähigen Nervensystems. Stark individuell, Trend zählt mehr als der Absolutwert.",
+    tips: ["Schlafqualität verbessern", "Atem-/Entspannungsübungen", "Belastung & Alkohol dosieren"] },
+  { key: "sleep", label: "Schlaf", unit: " h", ref: 7.5, opt: 8, dir: "high", span: 1.5, weight: 2,
+    why: "Schlafdauer pro Nacht. Unter 7 h beschleunigt das Altern messbar – Hormone, Regeneration und Immunsystem leiden.",
+    tips: ["Feste Schlafenszeiten", "Bildschirm & Koffein am Abend meiden", "Kühl & dunkel schlafen"] },
+  { key: "act", label: "Aktivität", unit: " kcal", ref: 900, opt: 1500, dir: "high", span: 600, weight: 2,
+    why: "Aktiv verbrannte Kalorien pro Tag (Bewegung & Training, ohne Grundumsatz).",
+    tips: ["Trainingsvolumen erhöhen", "Mehr Alltagsbewegung", "Weniger am Stück sitzen"] },
+  { key: "steps", label: "Schritte", unit: "", ref: 9000, opt: 12000, dir: "high", span: 5000, weight: 1.5,
+    why: "Tägliche Schritte. Schon ~8.000/Tag senken die Sterblichkeit deutlich – die Alltagsbewegung (NEAT) wird oft unterschätzt.",
+    tips: ["Spaziergänge einplanen", "Treppe statt Aufzug", "Telefonieren im Gehen"] },
+  { key: "strength", label: "Kraft/Woche", unit: " min", ref: 150, opt: 200, dir: "high", span: 150, weight: 1.5,
+    why: "Krafttraining pro Woche. Erhält Muskelmasse & Knochendichte – einer der wichtigsten Hebel gegen das Altern.",
+    tips: ["2–3 Krafteinheiten / Woche", "Progressiv schwerer werden", "Große Grundübungen priorisieren"] },
+];
+// Fürs Tempo nur die täglichen Metriken (VO₂max & Kraft haben keinen Tagesverlauf).
+const PACE_METRICS = AGE_METRICS.filter((m) => ["rhf", "hrv", "sleep", "act", "steps"].includes(m.key));
+
 function bioAge(data) {
   const bday = data.coros && data.coros.profile && data.coros.profile.birthday;
   if (!bday) return null;
@@ -1629,40 +1657,41 @@ function bioAge(data) {
   const avgAct = (dds) => { const xs = dds.map((d) => actOf(data, d)).filter((v) => typeof v === "number"); return xs.length ? xs.reduce((a, x) => a + x, 0) / xs.length : null; };
   const strengthPerWeek = (dds) => { const s = (data.workouts || []).filter((w) => dds.includes(w.date)).reduce((a, w) => a + (w.durationMin || 0), 0); return s / (dds.length / 7); };
 
-  // Beitrags-Modell über die letzten 14 Tage.
+  // Beitrags-Modell über die letzten 14 Tage. avgOf kennt die Spezialquellen
+  // (Aktivität inkl. manueller Korrektur, VO₂max/Kraft aus anderen Quellen).
   const dd = win(14);
-  const vo2 = data.coros && data.coros.fitness ? data.coros.fitness.vo2max : null;
-  const rhr = avgKey(dd, "rhf"); const hrv = avgKey(dd, "hrv"); const sleep = avgKey(dd, "sleep");
-  const act = avgAct(dd); const strength = strengthPerWeek(dd); const steps = avgKey(dd, "steps");
+  const avgOf = (dds, key) => {
+    if (key === "act") return avgAct(dds);
+    if (key === "vo2") return data.coros && data.coros.fitness ? data.coros.fitness.vo2max : null;
+    if (key === "strength") return strengthPerWeek(dds);
+    return avgKey(dds, key);
+  };
 
   const factors = []; let delta = 0;
-  // add(label, wert, referenz, "high"|"low", spanne, maxJahre, einheit)
-  const add = (label, val, ref, better, span, weight, unit) => {
-    if (val == null) return;
-    const dir = better === "high" ? val - ref : ref - val;
-    const years = Math.max(-weight, Math.min(weight, (dir / span) * weight));
+  for (const m of AGE_METRICS) {
+    const val = avgOf(dd, m.key);
+    if (val == null) continue;
+    const dir = m.dir === "high" ? val - m.ref : m.ref - val;
+    const years = clampN((dir / m.span) * m.weight, -m.weight, m.weight);
     delta -= years; // jünger → Alter runter
-    factors.push({ label, val: (Math.round(val * 10) / 10).toLocaleString("de-DE") + (unit || ""), years: Math.round(years * 10) / 10, good: years >= 0 });
-  };
-  add("VO₂max", vo2, 50, "high", 15, 4, "");
-  add("Ruhepuls", rhr, 52, "low", 14, 2.5, " bpm");
-  add("HRV", hrv, 70, "high", 50, 2, " ms");
-  add("Schlaf", sleep, 7.5, "high", 1.5, 2, " h");
-  add("Aktivität", act, 900, "high", 600, 2, " kcal");
-  add("Schritte", steps, 9000, "high", 5000, 1.5, "");
-  add("Kraft/Woche", strength, 150, "high", 150, 1.5, " min");
+    factors.push({ ...m, valNum: val, val: (Math.round(val * 10) / 10).toLocaleString("de-DE") + m.unit, years: Math.round(years * 10) / 10, good: years >= 0 });
+  }
 
   let bio = chrono + delta;
   bio = Math.max(chrono - 12, Math.min(chrono + 18, bio));
 
-  // Pace of Aging (Näherung): jüngeres 7-Tage-Fenster vs. 8–28-Tage-Baseline.
+  // Pace of Aging: letzte 7 Tage vs. die 3 Wochen davor. Fair: nur Metriken
+  // vergleichen, die in BEIDEN Fenstern Daten haben (sonst verzerrt z. B. eine
+  // fehlende HRV-Historie den Trend). 1,0× = du hältst dein Niveau konstant.
   const dRecent = win(7); const dBase = Array.from({ length: 21 }, (_, i) => dstr(i + 8));
-  const miniDelta = (dds) => {
-    let d = 0; const a2 = (v, r, hi, sp, w) => { if (v == null) return; const dir = hi ? v - r : r - v; d -= Math.max(-w, Math.min(w, (dir / sp) * w)); };
-    a2(avgKey(dds, "rhf"), 52, false, 14, 2.5); a2(avgKey(dds, "hrv"), 70, true, 50, 2); a2(avgKey(dds, "sleep"), 7.5, true, 1.5, 2); a2(avgAct(dds), 900, true, 600, 2); a2(avgKey(dds, "steps"), 9000, true, 5000, 1.5);
-    return d;
-  };
-  const pace = Math.max(0.5, Math.min(1.5, Math.round((1 + (miniDelta(dRecent) - miniDelta(dBase)) / 10) * 100) / 100));
+  let dRec = 0, dBaseP = 0, paceUsed = 0;
+  for (const m of PACE_METRICS) {
+    const a = avgOf(dRecent, m.key), b2 = avgOf(dBase, m.key);
+    if (a == null || b2 == null) continue;
+    const f = (v) => clampN(((m.dir === "high" ? v - m.ref : m.ref - v) / m.span) * m.weight, -m.weight, m.weight);
+    dRec -= f(a); dBaseP -= f(b2); paceUsed++;
+  }
+  const pace = paceUsed ? clampN(Math.round((1 + (dRec - dBaseP) / 10) * 100) / 100, 0.5, 1.5) : 1;
 
   // Das Tempo ist ein Trend (aktuell vs. eigener Schnitt davor). Ohne genug
   // Baseline-Historie wäre der Wert irreführend → erst ab ~14 Tagen im
@@ -1737,6 +1766,7 @@ function PaceBar({ pace }) {
 }
 
 function BioAge({ data }) {
+  const [sel, setSel] = useState(null);
   const r = bioAge(data);
   if (!r) return (
     <Page title="Healthspan" sub="Biologisches Alter aus deinen Coros-Daten">
@@ -1778,18 +1808,80 @@ function BioAge({ data }) {
         </>)}
       </Card>
 
-      <Label style={{ margin: "22px 4px 8px" }}>Was dein Alter beeinflusst</Label>
+      <Label style={{ margin: "22px 4px 8px" }}>Was dein Alter beeinflusst · zum Öffnen tippen</Label>
       {r.factors.map((f, i) => (
-        <Card key={i} style={{ marginBottom: 8, padding: "12px 15px", display: "flex", alignItems: "center", gap: 12 }}>
+        <Card key={i} onClick={() => setSel(f)} className="press" style={{ marginBottom: 8, padding: "12px 15px", display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 14.5, fontWeight: 700 }}>{f.label}</div>
             <div style={{ fontSize: 12, color: H.faint, marginTop: 1 }}>{f.val}</div>
           </div>
           <div style={{ fontSize: 15, fontWeight: 800, color: f.good ? H.up : H.down, fontVariantNumeric: "tabular-nums" }}>{f.years > 0 ? "−" : f.years < 0 ? "+" : "±"}{de(Math.abs(f.years))} J</div>
+          <ChevronRight size={17} color={H.faint} style={{ flexShrink: 0, marginLeft: -4 }} />
         </Card>
       ))}
-      <div style={{ fontSize: 11.5, color: H.faint, textAlign: "center", marginTop: 8, lineHeight: 1.5 }}>Aus VO₂max, Ruhepuls, HRV, Schlaf, Aktivität & Kraft. Fettfreie Masse & Schritte fehlen noch — mit Waage-/Schrittdaten wird's noch genauer. „−" = macht dich jünger.</div>
+      <div style={{ fontSize: 11.5, color: H.faint, textAlign: "center", marginTop: 8, lineHeight: 1.5 }}>Aus VO₂max, Ruhepuls, HRV, Schlaf, Aktivität, Schritten & Kraft. Fettfreie Masse fehlt noch — kommt über die Waage. „−" = macht dich jünger.</div>
+
+      {sel && <MetricSheet f={sel} close={() => setSel(null)} />}
     </div>
+  );
+}
+
+// Detailansicht einer Alters-Metrik: aktueller Wert, Skala mit Normal-/Optimalbereich, Erklärung, Tipps.
+function MetricSheet({ f, close }) {
+  const col = f.good ? H.up : H.down;
+  // Skala von lo..hi um die Referenz; „gut" liegt Richtung Zielwert (opt).
+  const lo = f.dir === "high" ? f.ref - f.span : f.ref - f.span;
+  const hi = f.dir === "high" ? f.ref + f.span : f.ref + f.span;
+  const pct = (v) => clampN(((v - lo) / (hi - lo)) * 100, 0, 100);
+  const valPos = pct(f.valNum), refPos = pct(f.ref);
+  // Grüne „gut"-Zone: bei high rechts der Referenz, bei low links davon.
+  const goodStart = f.dir === "high" ? refPos : 0;
+  const goodEnd = f.dir === "high" ? 100 : refPos;
+  const fmt = (v) => (Math.round(v * 10) / 10).toLocaleString("de-DE");
+  return (
+    <Sheet title={f.label} close={close}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 4 }}>
+        <span style={{ fontSize: 38, fontWeight: 830, letterSpacing: -1, color: H.text }}>{f.val}</span>
+        <span style={{ fontSize: 15, fontWeight: 800, color: col }}>{f.years > 0 ? "−" : f.years < 0 ? "+" : "±"}{de(Math.abs(f.years))} Jahre</span>
+      </div>
+      <div style={{ fontSize: 12.5, color: H.sub, marginBottom: 18 }}>Ø der letzten 14 Tage · {f.good ? "macht dich jünger" : "macht dich älter"}</div>
+
+      <div style={{ position: "relative", height: 40, marginBottom: 6 }}>
+        <div style={{ position: "absolute", top: 15, left: 0, right: 0, height: 8, borderRadius: 5, background: H.bg2, overflow: "hidden" }}>
+          <div style={{ position: "absolute", top: 0, bottom: 0, left: goodStart + "%", width: (goodEnd - goodStart) + "%", background: "rgba(52,224,161,.28)" }} />
+        </div>
+        <div style={{ position: "absolute", top: 12, left: refPos + "%", transform: "translateX(-50%)", width: 2, height: 14, background: H.faint }} />
+        <div style={{ position: "absolute", top: 8, left: valPos + "%", transform: "translateX(-50%)", width: 16, height: 16, borderRadius: "50%", background: col, border: "3px solid " + H.card, boxShadow: `0 0 10px ${col}` }} />
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: H.faint, fontWeight: 600, marginBottom: 20 }}>
+        <span>{fmt(lo)}{f.unit}</span>
+        <span>Referenz {fmt(f.ref)}{f.unit}</span>
+        <span>{fmt(hi)}{f.unit}</span>
+      </div>
+
+      <div style={{ display: "flex", gap: 9, marginBottom: 18 }}>
+        <div style={{ flex: 1, background: H.glass, border: "1px solid " + H.glassLine, borderRadius: 13, padding: "10px 12px" }}>
+          <div style={{ fontSize: 10.5, letterSpacing: 0.5, textTransform: "uppercase", color: H.faint, fontWeight: 700 }}>Referenz (neutral)</div>
+          <div style={{ fontSize: 16, fontWeight: 800, marginTop: 2 }}>{fmt(f.ref)}{f.unit}</div>
+        </div>
+        <div style={{ flex: 1, background: "rgba(52,224,161,.1)", border: "1px solid rgba(52,224,161,.25)", borderRadius: 13, padding: "10px 12px" }}>
+          <div style={{ fontSize: 10.5, letterSpacing: 0.5, textTransform: "uppercase", color: H.up, fontWeight: 700 }}>Zielwert</div>
+          <div style={{ fontSize: 16, fontWeight: 800, marginTop: 2, color: H.up }}>{fmt(f.opt)}{f.unit}</div>
+        </div>
+      </div>
+
+      <div style={{ fontSize: 13.5, color: H.sub, lineHeight: 1.55, marginBottom: 18 }}>{f.why}</div>
+
+      <Label style={{ marginBottom: 10 }}>{f.dir === "high" ? "So verbesserst du das" : "So senkst du das"}</Label>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 4 }}>
+        {f.tips.map((t, i) => (
+          <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <span style={{ flexShrink: 0, width: 20, height: 20, borderRadius: "50%", background: H.blueSoft, color: H.blue, fontSize: 11, fontWeight: 800, display: "grid", placeItems: "center", marginTop: 1 }}>{i + 1}</span>
+            <span style={{ fontSize: 13.5, lineHeight: 1.45 }}>{t}</span>
+          </div>
+        ))}
+      </div>
+    </Sheet>
   );
 }
 
@@ -1804,7 +1896,7 @@ const Page = ({ title, sub, subEl, backFn, action, children }) => (
     {children}
   </div>
 );
-const Card = ({ children, style }) => <div className="glass" style={{ background: H.glass, border: "1px solid " + H.glassLine, borderRadius: 20, padding: 16, ...style }}>{children}</div>;
+const Card = ({ children, style, onClick, className }) => <div onClick={onClick} className={"glass" + (className ? " " + className : "")} style={{ background: H.glass, border: "1px solid " + H.glassLine, borderRadius: 20, padding: 16, ...style }}>{children}</div>;
 const Label = ({ children, style }) => <div style={{ fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase", color: H.faint, fontWeight: 700, marginBottom: 8, ...style }}>{children}</div>;
 const Bar = ({ pct, color }) => <div style={{ height: 7, borderRadius: 4, background: H.bg2, overflow: "hidden" }}><div className="b" style={{ width: pct + "%", height: "100%", background: color, borderRadius: 4 }} /></div>;
 const Stat = ({ label, value, accent, color }) => (<div className={accent ? "" : "glass"} style={{ flex: 1, background: accent ? H.grad : H.glass, border: accent ? "none" : "1px solid " + H.glassLine, borderRadius: 16, padding: "12px", boxShadow: accent ? "0 6px 20px -6px " + H.blueGlow : "none" }}><div style={{ fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase", color: accent ? "rgba(255,255,255,.75)" : H.faint, fontWeight: 700 }}>{label}</div><div style={{ fontSize: 17, fontWeight: 800, marginTop: 3, color: color || (accent ? "#fff" : H.text), fontVariantNumeric: "tabular-nums", letterSpacing: -0.3 }}>{value}</div></div>);
