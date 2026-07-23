@@ -25,6 +25,9 @@ const today = dstr(0);
 const fmtShort = (s) => new Date(s).toLocaleDateString("de-DE", { day: "2-digit", month: "short" });
 const dayLabel = (s) => s === today ? "Heute" : s === dstr(1) ? "Gestern" : s === dstr(-1) ? "Morgen" : new Date(s).toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
 const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
+// Deutsche Zahl-Anzeige: Komma statt Punkt. de1 = eine feste Nachkommastelle.
+const de = (n) => String(n).replace(".", ",");
+const de1 = (n) => n.toFixed(1).replace(".", ",");
 // HRV eines Tages: manueller Eintrag (hrvLog) hat Vorrang, sonst aus Health (context).
 const hrvOf = (data, date) => {
   const m = (data.hrvLog || {})[date];
@@ -1612,8 +1615,8 @@ function bioAge(data) {
   const bday = data.coros && data.coros.profile && data.coros.profile.birthday;
   if (!bday) return null;
   const b = new Date(bday + "T00:00:00"); const now = new Date();
-  let chrono = now.getFullYear() - b.getFullYear();
-  if (now.getMonth() < b.getMonth() || (now.getMonth() === b.getMonth() && now.getDate() < b.getDate())) chrono--;
+  // Exaktes Alter inkl. Nachkommastelle (taggenau), z.B. 26,8 statt 26.
+  const chrono = Math.round(((now.getTime() - b.getTime()) / (365.2425 * 864e5)) * 10) / 10;
   if (!chrono || chrono < 10 || chrono > 100) return null;
 
   const win = (n) => Array.from({ length: n }, (_, i) => dstr(i + 1));
@@ -1634,7 +1637,7 @@ function bioAge(data) {
     const dir = better === "high" ? val - ref : ref - val;
     const years = Math.max(-weight, Math.min(weight, (dir / span) * weight));
     delta -= years; // jünger → Alter runter
-    factors.push({ label, val: (Math.round(val * 10) / 10) + (unit || ""), years: Math.round(years * 10) / 10, good: years >= 0 });
+    factors.push({ label, val: de(Math.round(val * 10) / 10) + (unit || ""), years: Math.round(years * 10) / 10, good: years >= 0 });
   };
   add("VO₂max", vo2, 50, "high", 15, 4, "");
   add("Ruhepuls", rhr, 52, "low", 14, 2.5, " bpm");
@@ -1685,7 +1688,7 @@ function AgeBlob({ chrono, bio }) {
         <span key={i} style={{ position: "absolute", left: p.x + "%", top: p.y + "%", width: p.s + "px", height: p.s + "px", borderRadius: "50%", background: col, transform: "translate(-50%,-50%)", boxShadow: `0 0 ${p.s * 2.5}px ${col}`, animation: `twinkle ${p.du}s ease-in-out ${p.d}s infinite` }} />
       ))}
       <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
-        <div style={{ fontSize: 62, fontWeight: 830, letterSpacing: -2.5, color: H.text, lineHeight: 1, fontVariantNumeric: "tabular-nums", textShadow: "0 2px 20px rgba(0,0,0,.5)" }}>{bio.toFixed(1)}</div>
+        <div style={{ fontSize: 62, fontWeight: 830, letterSpacing: -2.5, color: H.text, lineHeight: 1, fontVariantNumeric: "tabular-nums", textShadow: "0 2px 20px rgba(0,0,0,.5)" }}>{de1(bio)}</div>
         <div style={{ fontSize: 10.5, letterSpacing: 1.8, textTransform: "uppercase", color: H.sub, fontWeight: 750, marginTop: 7 }}>Biologisches Alter</div>
       </div>
     </div>
@@ -1705,7 +1708,7 @@ function PaceBar({ pace }) {
           <div style={{ fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase", color: H.faint, fontWeight: 700 }}>Alterungs-Tempo</div>
           <div style={{ fontSize: 12.5, color: H.sub, marginTop: 3 }}>{good ? "langsamer als normal" : "schneller als normal"}</div>
         </div>
-        <div style={{ fontSize: 32, fontWeight: 830, color: c, letterSpacing: -1, lineHeight: 1 }}>{pace.toFixed(1)}×</div>
+        <div style={{ fontSize: 32, fontWeight: 830, color: c, letterSpacing: -1, lineHeight: 1 }}>{de1(pace)}×</div>
       </div>
       <div style={{ position: "relative", height: 24 }}>
         <div style={{ position: "absolute", top: 8, left: 0, right: 0, display: "flex", justifyContent: "space-between" }}>
@@ -1740,8 +1743,8 @@ function BioAge({ data }) {
       <AgeBlob chrono={r.chrono} bio={r.bio} />
 
       <div style={{ textAlign: "center", marginTop: 14 }}>
-        <div style={{ fontSize: 20, fontWeight: 830, color: diffCol, letterSpacing: -0.4 }}>{diff === 0 ? "genau dein Alter" : diff + " Jahre " + (younger ? "jünger" : "älter")}</div>
-        <div style={{ fontSize: 13, color: H.sub, marginTop: 4 }}>Chronologisch bist du {r.chrono}</div>
+        <div style={{ fontSize: 20, fontWeight: 830, color: diffCol, letterSpacing: -0.4 }}>{diff === 0 ? "genau dein Alter" : de1(diff) + " Jahre " + (younger ? "jünger" : "älter")}</div>
+        <div style={{ fontSize: 13, color: H.sub, marginTop: 4 }}>Chronologisch bist du {de1(r.chrono)}</div>
       </div>
 
       <Card style={{ marginTop: 20 }}>
@@ -1756,7 +1759,7 @@ function BioAge({ data }) {
             <div style={{ fontSize: 14.5, fontWeight: 700 }}>{f.label}</div>
             <div style={{ fontSize: 12, color: H.faint, marginTop: 1 }}>{f.val}</div>
           </div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: f.good ? H.up : H.down, fontVariantNumeric: "tabular-nums" }}>{f.years > 0 ? "−" : f.years < 0 ? "+" : "±"}{Math.abs(f.years)} J</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: f.good ? H.up : H.down, fontVariantNumeric: "tabular-nums" }}>{f.years > 0 ? "−" : f.years < 0 ? "+" : "±"}{de(Math.abs(f.years))} J</div>
         </Card>
       ))}
       <div style={{ fontSize: 11.5, color: H.faint, textAlign: "center", marginTop: 8, lineHeight: 1.5 }}>Aus VO₂max, Ruhepuls, HRV, Schlaf, Aktivität & Kraft. Fettfreie Masse & Schritte fehlen noch — mit Waage-/Schrittdaten wird's noch genauer. „−" = macht dich jünger.</div>
