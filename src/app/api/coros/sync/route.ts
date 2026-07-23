@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { createClient as createServerClientFromCookies } from "@/lib/supabase/server";
 import { accessToken, corosTool, loadAuth } from "@/lib/coros";
 
 export const runtime = "nodejs";
@@ -46,7 +47,11 @@ async function run(request: Request) {
   const a0 = await loadAuth();
   const envSecret = process.env.CRON_SECRET || null;   // von Vercel-Cron automatisch als Bearer geschickt
   const dbSecret = a0?.sync_secret || null;             // für manuellen Test ohne Vercel-Env
-  const ok = (!!envSecret && provided === envSecret) || (!!dbSecret && provided === dbSecret);
+  let ok = (!!envSecret && provided === envSecret) || (!!dbSecret && provided === dbSecret);
+  // Alternativ: eingeloggter App-Nutzer (Manueller Sync-Button) darf synchronisieren.
+  if (!ok) {
+    try { const sb = await createServerClientFromCookies(); const { data: { user } } = await sb.auth.getUser(); if (user && user.id === process.env.HEALTH_SYNC_USER_ID) ok = true; } catch { /* keine Session */ }
+  }
   if (!ok) return Response.json({ error: "unauthorized" }, { status: 401 });
 
   let token: string;
@@ -92,7 +97,13 @@ async function run(request: Request) {
       predHM: g(fitTxt, /Half Marathon Prediction:\s*([^\n]+)/i),
       predM: g(fitTxt, /(?<!Half )Marathon Prediction:\s*([^\n]+)/i),
     };
-    const data = { recovery, fitness, access_expires: a0?.access_expires ?? null, synced_at: Date.now() };
+    let profile = null;
+    try {
+      const uiTxt = await corosTool(token, "queryUserInfo", {});
+      const bday = g(uiTxt, /Birthday:\s*(\d{4}-\d{2}-\d{2})/i);
+      profile = { birthday: bday, height: g(uiTxt, /Height:\s*([\d.]+)/i), weight: g(uiTxt, /Weight:\s*([\d.]+)/i) };
+    } catch { /* profil optional */ }
+    const data = { recovery, fitness, profile, access_expires: a0?.access_expires ?? null, synced_at: Date.now() };
     await supabase.from("coros_snapshot").upsert({ user_id: userId, data, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
     snapshotSaved = true;
   } catch { /* Snapshot ist optional — Tagesdaten sind das Wichtige */ }

@@ -5,7 +5,7 @@ import {
   Flame, Dumbbell, Utensils, BarChart3, Plus, X, ChevronLeft, ChevronRight,
   Sparkles, MapPin, Search, Trophy, Watch, Activity, Scale, CheckCircle2,
   AlertTriangle, Zap, Clock, Settings, ClipboardList, Send, MessageCircle,
-  Camera, Mic, Pencil
+  Camera, Mic, Pencil, HeartPulse, RefreshCw
 } from "lucide-react";
 
 const H = {
@@ -377,6 +377,7 @@ export default function App() {
   useEffect(() => { const t = setTimeout(() => setSplash(false), 1650); return () => clearTimeout(t); }, []);
   if (!data) return <div style={{ background: H.bg, minHeight: "100dvh" }}>{splash && <Splash />}</div>;
   const commit = (d) => { setData(d); persist(d); };
+  const reload = () => load().then(setData);
 
   return (
     <div style={{ position: "relative", minHeight: "100dvh", background: "linear-gradient(180deg,#0A0A12 0%,#07070B 60%,#050509 100%)", fontFamily: "var(--font-manrope), -apple-system, ui-sans-serif, sans-serif", color: H.text }}>
@@ -389,10 +390,10 @@ export default function App() {
       <div style={{ maxWidth: 460, margin: "0 auto", minHeight: "100dvh", position: "relative", zIndex: 1, display: "flex", flexDirection: "column" }}>
         <div id="appscroll" className="scroll" style={{ flex: 1, padding: "env(safe-area-inset-top) 0 calc(96px + env(safe-area-inset-bottom))" }}>
           <div key={tab} className="fade-in">
-            {tab === "home" && <Home data={data} commit={commit} />}
+            {tab === "home" && <><Home data={data} commit={commit} reload={reload} /><Analyse data={data} /></>}
             {tab === "train" && <Training data={data} commit={commit} active={active} setActive={setActive} />}
             {tab === "food" && <Food data={data} commit={commit} />}
-            {tab === "analyse" && <Analyse data={data} />}
+            {tab === "age" && <BioAge data={data} />}
           </div>
         </div>
 
@@ -1430,7 +1431,24 @@ function HrvPrompt({ data, commit }) {
     </Card>
   );
 }
-function Home({ data, commit }) {
+function SyncButton({ reload }) {
+  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState("");
+  const go = async () => {
+    if (busy) return; setBusy(true); setMsg("");
+    try {
+      const r = await fetch("/api/coros/sync", { method: "POST" }).then((x) => x.json());
+      if (r && r.ok) { setMsg("Aktualisiert ✓"); if (reload) await reload(); }
+      else setMsg(r && r.error === "coros_not_connected" ? "Coros neu verbinden" : "Sync fehlgeschlagen");
+    } catch (e) { setMsg("Sync fehlgeschlagen"); }
+    setBusy(false); setTimeout(() => setMsg(""), 3500);
+  };
+  return (
+    <button onClick={go} disabled={busy} className="press" style={{ width: "100%", marginBottom: 14, padding: 12, borderRadius: 13, border: "1px solid " + H.glassLine, background: H.glass, color: H.text, fontWeight: 700, fontSize: 13.5, cursor: busy ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+      <RefreshCw size={15} color={H.blue} className={busy ? "spin" : ""} /> {busy ? "Synchronisiere mit Coros …" : (msg || "Coros jetzt synchronisieren")}
+    </button>
+  );
+}
+function Home({ data, commit, reload }) {
   const set = data.settings; const ctx = data.context[today] || {}; const nut = data.nutrition[today] || emptyDay();
   const eaten = [].concat(...MEALS.map(([k]) => nut[k] || [])).reduce((a, m) => ({ p: a.p + m.p, k: a.k + m.k }), { p: 0, k: 0 });
   const act = actOf(data, today);
@@ -1456,6 +1474,7 @@ function Home({ data, commit }) {
       <div style={{ fontSize: 13, color: H.faint }}>{dateStr}</div>
       <div style={{ fontSize: 14, color: H.sub, marginTop: 3, fontWeight: 600 }}>{summary}</div>
     </div>}>
+      <SyncButton reload={reload} />
       {needReauth && (
         <a href="/api/coros/connect" style={{ textDecoration: "none", display: "block", marginBottom: 14 }}>
           <div className="press" style={{ background: H.amber + "22", border: "1px solid " + H.amber + "66", borderRadius: 14, padding: "12px 14px", display: "flex", alignItems: "center", gap: 10 }}>
@@ -1586,6 +1605,115 @@ function Analyse({ data }) {
   );
 }
 
+/* ================= BIOLOGISCHES ALTER (Whoop-Style) ================= */
+// Modell nach WHOOP-Prinzip: chronologisches Alter, angepasst durch Metriken
+// mit Referenzwerten (über Referenz = jünger, drunter = älter). Aus Coros-Daten.
+function bioAge(data) {
+  const bday = data.coros && data.coros.profile && data.coros.profile.birthday;
+  if (!bday) return null;
+  const b = new Date(bday + "T00:00:00"); const now = new Date();
+  let chrono = now.getFullYear() - b.getFullYear();
+  if (now.getMonth() < b.getMonth() || (now.getMonth() === b.getMonth() && now.getDate() < b.getDate())) chrono--;
+  if (!chrono || chrono < 10 || chrono > 100) return null;
+
+  const win = (n) => Array.from({ length: n }, (_, i) => dstr(i + 1));
+  const avgKey = (dds, key) => { const xs = dds.map((d) => (data.context[d] || {})[key]).filter((v) => typeof v === "number"); return xs.length ? xs.reduce((a, x) => a + x, 0) / xs.length : null; };
+  const avgAct = (dds) => { const xs = dds.map((d) => actOf(data, d)).filter((v) => typeof v === "number"); return xs.length ? xs.reduce((a, x) => a + x, 0) / xs.length : null; };
+  const strengthPerWeek = (dds) => { const s = (data.workouts || []).filter((w) => dds.includes(w.date)).reduce((a, w) => a + (w.durationMin || 0), 0); return s / (dds.length / 7); };
+
+  // Beitrags-Modell über die letzten 14 Tage.
+  const dd = win(14);
+  const vo2 = data.coros && data.coros.fitness ? data.coros.fitness.vo2max : null;
+  const rhr = avgKey(dd, "rhf"); const hrv = avgKey(dd, "hrv"); const sleep = avgKey(dd, "sleep");
+  const act = avgAct(dd); const strength = strengthPerWeek(dd);
+
+  const factors = []; let delta = 0;
+  // add(label, wert, referenz, "high"|"low", spanne, maxJahre, einheit)
+  const add = (label, val, ref, better, span, weight, unit) => {
+    if (val == null) return;
+    const dir = better === "high" ? val - ref : ref - val;
+    const years = Math.max(-weight, Math.min(weight, (dir / span) * weight));
+    delta -= years; // jünger → Alter runter
+    factors.push({ label, val: (Math.round(val * 10) / 10) + (unit || ""), years: Math.round(years * 10) / 10, good: years >= 0 });
+  };
+  add("VO₂max", vo2, 45, "high", 12, 4, "");
+  add("Ruhepuls", rhr, 58, "low", 12, 3, " bpm");
+  add("HRV", hrv, 55, "high", 40, 2.5, " ms");
+  add("Schlaf", sleep, 7.5, "high", 1.5, 2, " h");
+  add("Aktivität", act, 700, "high", 500, 2, " kcal");
+  add("Kraft/Woche", strength, 150, "high", 120, 1.5, " min");
+
+  let bio = chrono + delta;
+  bio = Math.max(chrono - 15, Math.min(chrono + 20, bio));
+
+  // Pace of Aging (Näherung): jüngeres 7-Tage-Fenster vs. 8–28-Tage-Baseline.
+  const dRecent = win(7); const dBase = Array.from({ length: 21 }, (_, i) => dstr(i + 8));
+  const miniDelta = (dds) => {
+    let d = 0; const a2 = (v, r, hi, sp, w) => { if (v == null) return; const dir = hi ? v - r : r - v; d -= Math.max(-w, Math.min(w, (dir / sp) * w)); };
+    a2(avgKey(dds, "rhf"), 58, false, 12, 3); a2(avgKey(dds, "hrv"), 55, true, 40, 2.5); a2(avgKey(dds, "sleep"), 7.5, true, 1.5, 2); a2(avgAct(dds), 700, true, 500, 2);
+    return d;
+  };
+  const pace = Math.max(0.5, Math.min(1.5, Math.round((1 + (miniDelta(dRecent) - miniDelta(dBase)) / 10) * 100) / 100));
+
+  return { chrono, bio: Math.round(bio * 10) / 10, delta: Math.round(delta * 10) / 10, pace, factors };
+}
+
+function AgeRing({ chrono, bio }) {
+  const younger = bio <= chrono;
+  const col = younger ? H.up : H.down;
+  const r = 52, c = 2 * Math.PI * r;
+  const frac = Math.max(0.05, Math.min(1, 1 - (bio - (chrono - 15)) / 35)); // jünger → voller
+  return (
+    <svg width="150" height="150" viewBox="0 0 150 150" style={{ flexShrink: 0 }}>
+      <circle cx="75" cy="75" r={r} fill="none" stroke={H.bg2} strokeWidth="11" />
+      <circle cx="75" cy="75" r={r} fill="none" stroke={col} strokeWidth="11" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - frac)} transform="rotate(-90 75 75)" style={{ transition: "stroke-dashoffset 1s cubic-bezier(.22,1,.36,1)" }} />
+      <text x="75" y="68" textAnchor="middle" fill={H.text} fontSize="38" fontWeight="820">{Math.round(bio)}</text>
+      <text x="75" y="92" textAnchor="middle" fill={H.sub} fontSize="12" fontWeight="600">bio. Alter</text>
+    </svg>
+  );
+}
+
+function BioAge({ data }) {
+  const r = bioAge(data);
+  if (!r) return (
+    <Page title="Biologisches Alter" sub="Whoop-Style aus deinen Coros-Daten">
+      <Card><div style={{ fontSize: 14, color: H.sub, lineHeight: 1.55 }}>Sobald Coros dein Profil (Geburtsdatum) und ein paar Tage Health-Daten synchronisiert hat, erscheint hier dein biologisches Alter. Stoße auf „Heute" einen Sync an.</div></Card>
+    </Page>
+  );
+  const younger = r.bio <= r.chrono;
+  const diff = Math.round(Math.abs(r.chrono - r.bio) * 10) / 10;
+  return (
+    <Page title="Biologisches Alter" sub="Whoop-Style · aus deinen Coros-Daten">
+      <Card style={{ marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+          <AgeRing chrono={r.chrono} bio={r.bio} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: younger ? H.up : H.down, lineHeight: 1.2 }}>{diff === 0 ? "genau dein Alter" : diff + " Jahre " + (younger ? "jünger" : "älter")}</div>
+            <div style={{ fontSize: 13, color: H.sub, marginTop: 3 }}>Chronologisch: {r.chrono} Jahre</div>
+            <div style={{ marginTop: 10, display: "inline-flex", alignItems: "baseline", gap: 6, background: H.glass, border: "1px solid " + H.glassLine, borderRadius: 12, padding: "8px 12px" }}>
+              <span style={{ fontSize: 18, fontWeight: 820, color: r.pace <= 1 ? H.up : H.amber }}>{r.pace.toFixed(2)}×</span>
+              <span style={{ fontSize: 11.5, color: H.sub }}>Pace of Aging</span>
+            </div>
+          </div>
+        </div>
+        <div style={{ fontSize: 12, color: H.sub, marginTop: 12, lineHeight: 1.5 }}>{r.pace < 1 ? "Du alterst aktuell langsamer als die Zeit — deine Gewohnheiten zahlen sich aus. 💪" : r.pace > 1 ? "Aktuell alterst du etwas schneller — Schlaf/Erholung priorisieren." : "Du alterst im Takt der Zeit."}</div>
+      </Card>
+
+      <Label style={{ margin: "0 4px 8px" }}>Was dein Alter beeinflusst</Label>
+      {r.factors.map((f, i) => (
+        <Card key={i} style={{ marginBottom: 8, padding: "12px 15px", display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14.5, fontWeight: 700 }}>{f.label}</div>
+            <div style={{ fontSize: 12, color: H.faint, marginTop: 1 }}>{f.val}</div>
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: f.good ? H.up : H.down, fontVariantNumeric: "tabular-nums" }}>{f.years > 0 ? "−" : f.years < 0 ? "+" : "±"}{Math.abs(f.years)} J</div>
+        </Card>
+      ))}
+      <div style={{ fontSize: 11.5, color: H.faint, textAlign: "center", marginTop: 8, lineHeight: 1.5 }}>Modell nach WHOOP-Prinzip (Referenzwerte je Metrik). Fettfreie Masse & Schritte fehlen noch — mit Waage-/Schrittdaten wird's noch genauer. „−" = macht dich jünger.</div>
+    </Page>
+  );
+}
+
 /* ================= shared ================= */
 const Page = ({ title, sub, subEl, backFn, action, children }) => (
   <div style={{ padding: "22px 18px 8px" }}>
@@ -1650,7 +1778,7 @@ const sheetInput = { width: "100%", padding: "12px 14px", borderRadius: 11, bord
 const navBtn = { all: "unset", cursor: "pointer", padding: "4px 10px", display: "grid", placeItems: "center" };
 const iconBtn = { all: "unset", cursor: "pointer", width: 38, height: 38, borderRadius: 11, background: H.card, border: "1px solid " + H.line, display: "grid", placeItems: "center" };
 function Nav({ tab, setTab, active }) {
-  const items = [{ k: "home", l: "Heute", I: Flame }, { k: "train", l: "Training", I: Dumbbell }, { k: "food", l: "Ernährung", I: Utensils }, { k: "analyse", l: "Analyse", I: BarChart3 }];
+  const items = [{ k: "home", l: "Übersicht", I: Flame }, { k: "train", l: "Training", I: Dumbbell }, { k: "food", l: "Ernährung", I: Utensils }, { k: "age", l: "Alter", I: HeartPulse }];
   return (<div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 460, zIndex: 50, display: "flex", background: "rgba(12,12,18,.72)", backdropFilter: "blur(24px) saturate(150%)", WebkitBackdropFilter: "blur(24px) saturate(150%)", borderTop: "1px solid " + H.glassLine, padding: "9px 0 calc(9px + env(safe-area-inset-bottom))" }}>
     {items.map(({ k, l, I }) => { const on = tab === k; const dot = active && k === "train"; return (
       <button key={k} onClick={() => setTab(k)} className="press" style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: on ? H.blue : H.faint, position: "relative" }}>
@@ -1684,6 +1812,8 @@ const Style = () => (<style>{`
   @keyframes popDot{ from{opacity:0; transform:scale(.4)} to{opacity:1; transform:scale(1)} }
   @keyframes draw{ to{ stroke-dashoffset:0 } }
   @keyframes splashOut{ 0%,62%{opacity:1} 100%{opacity:0} }
+  .spin{ animation:spin 1s linear infinite; }
+  @keyframes spin{ to{ transform:rotate(360deg) } }
   .rotate-hint{ display:none }
   @media screen and (orientation:landscape) and (max-height:560px){
     .rotate-hint{ display:flex; position:fixed; inset:0; z-index:300; background:#07070B; color:#F4F3F8; align-items:center; justify-content:center; text-align:center; padding:28px; font-size:16px; font-weight:700; line-height:1.5; }
