@@ -129,6 +129,7 @@ function mergeContext(d, ctxRows) {
       ...(r.stress ? { stress: r.stress } : {}),
       ...(r.hrv != null ? { hrv: r.hrv } : {}),
       ...(r.resting_hr != null ? { rhf: r.resting_hr } : {}),
+      ...(r.steps != null ? { steps: r.steps } : {}),
       ...(r.weight_kg != null ? { weight: Number(r.weight_kg) } : {}),
     };
   }
@@ -1523,11 +1524,15 @@ function Home({ data, commit, reload }) {
         </Card>
       )}
       <Label style={{ margin: "0 4px 8px" }}>Heute · Coros{ctx.weight != null ? " · Gewicht: Apple Health" : ""}</Label>
-      <div style={{ display: "flex", gap: 9, marginBottom: 14 }}>
+      <div style={{ display: "flex", gap: 9, marginBottom: 9 }}>
         <Stat label="Aktiv-kcal" value={dash(act)} accent />
-        <Stat label="Schlaf" value={ctx.sleep != null ? ctx.sleep + " h" : "—"} />
+        <Stat label="Schritte" value={ctx.steps != null ? ctx.steps.toLocaleString("de-DE") : "—"} />
+        <Stat label="Schlaf" value={ctx.sleep != null ? de(ctx.sleep) + " h" : "—"} />
+      </div>
+      <div style={{ display: "flex", gap: 9, marginBottom: 14 }}>
         <Stat label="Ruhepuls" value={dash(ctx.rhf)} />
-        <Stat label="Gewicht" value={ctx.weight != null ? ctx.weight + " kg" : "—"} />
+        <Stat label="Stress" value={ctx.stress != null ? ctx.stress : "—"} />
+        <Stat label="Gewicht" value={ctx.weight != null ? de(ctx.weight) + " kg" : "—"} />
       </div>
 
       <Card style={{ marginBottom: 14 }}>
@@ -1628,7 +1633,7 @@ function bioAge(data) {
   const dd = win(14);
   const vo2 = data.coros && data.coros.fitness ? data.coros.fitness.vo2max : null;
   const rhr = avgKey(dd, "rhf"); const hrv = avgKey(dd, "hrv"); const sleep = avgKey(dd, "sleep");
-  const act = avgAct(dd); const strength = strengthPerWeek(dd);
+  const act = avgAct(dd); const strength = strengthPerWeek(dd); const steps = avgKey(dd, "steps");
 
   const factors = []; let delta = 0;
   // add(label, wert, referenz, "high"|"low", spanne, maxJahre, einheit)
@@ -1637,13 +1642,14 @@ function bioAge(data) {
     const dir = better === "high" ? val - ref : ref - val;
     const years = Math.max(-weight, Math.min(weight, (dir / span) * weight));
     delta -= years; // jünger → Alter runter
-    factors.push({ label, val: de(Math.round(val * 10) / 10) + (unit || ""), years: Math.round(years * 10) / 10, good: years >= 0 });
+    factors.push({ label, val: (Math.round(val * 10) / 10).toLocaleString("de-DE") + (unit || ""), years: Math.round(years * 10) / 10, good: years >= 0 });
   };
   add("VO₂max", vo2, 50, "high", 15, 4, "");
   add("Ruhepuls", rhr, 52, "low", 14, 2.5, " bpm");
   add("HRV", hrv, 70, "high", 50, 2, " ms");
   add("Schlaf", sleep, 7.5, "high", 1.5, 2, " h");
   add("Aktivität", act, 900, "high", 600, 2, " kcal");
+  add("Schritte", steps, 9000, "high", 5000, 1.5, "");
   add("Kraft/Woche", strength, 150, "high", 150, 1.5, " min");
 
   let bio = chrono + delta;
@@ -1653,7 +1659,7 @@ function bioAge(data) {
   const dRecent = win(7); const dBase = Array.from({ length: 21 }, (_, i) => dstr(i + 8));
   const miniDelta = (dds) => {
     let d = 0; const a2 = (v, r, hi, sp, w) => { if (v == null) return; const dir = hi ? v - r : r - v; d -= Math.max(-w, Math.min(w, (dir / sp) * w)); };
-    a2(avgKey(dds, "rhf"), 52, false, 14, 2.5); a2(avgKey(dds, "hrv"), 70, true, 50, 2); a2(avgKey(dds, "sleep"), 7.5, true, 1.5, 2); a2(avgAct(dds), 900, true, 600, 2);
+    a2(avgKey(dds, "rhf"), 52, false, 14, 2.5); a2(avgKey(dds, "hrv"), 70, true, 50, 2); a2(avgKey(dds, "sleep"), 7.5, true, 1.5, 2); a2(avgAct(dds), 900, true, 600, 2); a2(avgKey(dds, "steps"), 9000, true, 5000, 1.5);
     return d;
   };
   const pace = Math.max(0.5, Math.min(1.5, Math.round((1 + (miniDelta(dRecent) - miniDelta(dBase)) / 10) * 100) / 100));
@@ -1661,7 +1667,7 @@ function bioAge(data) {
   // Das Tempo ist ein Trend (aktuell vs. eigener Schnitt davor). Ohne genug
   // Baseline-Historie wäre der Wert irreführend → erst ab ~14 Tagen im
   // Vergleichsfenster freigeben. histDays = Tage mit Daten in den letzten 28.
-  const hasData = (dds) => dds.filter((d) => { const c = data.context[d] || {}; return c.rhf != null || c.hrv != null || c.sleep != null || actOf(data, d) != null; }).length;
+  const hasData = (dds) => dds.filter((d) => { const c = data.context[d] || {}; return c.rhf != null || c.hrv != null || c.sleep != null || c.steps != null || actOf(data, d) != null; }).length;
   const paceReady = hasData(dBase) >= 14;
   const histDays = hasData(win(28));
 

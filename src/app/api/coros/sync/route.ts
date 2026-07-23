@@ -7,7 +7,7 @@ export const maxDuration = 60;
 
 const iso = (yyyymmdd: string) => yyyymmdd.slice(0, 4) + "-" + yyyymmdd.slice(4, 6) + "-" + yyyymmdd.slice(6, 8);
 
-type Row = { activity_kcal?: number; sleep_hours?: number; resting_hr?: number; hrv?: number; stress?: string };
+type Row = { activity_kcal?: number; sleep_hours?: number; resting_hr?: number; hrv?: number; stress?: string; steps?: number };
 
 // Parst die Text-Outputs der Coros-Tools in tagesweise Werte.
 function parseAll(hrvTxt: string, rhrTxt: string, dailyTxt: string) {
@@ -28,6 +28,8 @@ function parseAll(hrvTxt: string, rhrTxt: string, dailyTxt: string) {
     const d = iso(blocks[i]); const body = blocks[i + 1] || ""; const row = get(d);
     const cal = body.match(/Calories:\s*([\d,]+)\s*kcal/i);
     if (cal) row.activity_kcal = parseInt(cal[1].replace(/,/g, ""), 10);
+    const steps = body.match(/Steps:\s*([\d,]+)/i);
+    if (steps) row.steps = parseInt(steps[1].replace(/,/g, ""), 10);
     const sleep = body.match(/Total:\s*(?:(\d+)h)?\s*(?:(\d+)min)?/i);
     if (sleep && (sleep[1] || sleep[2])) row.sleep_hours = Math.round(((parseInt(sleep[1] || "0", 10) * 60 + parseInt(sleep[2] || "0", 10)) / 60) * 100) / 100;
     const stress = body.match(/Stress:\s*Avg\s*(\d+)/i);
@@ -70,7 +72,7 @@ async function run(request: Request) {
   const days = parseAll(hrvTxt, rhrTxt, dailyTxt);
   const userId = process.env.HEALTH_SYNC_USER_ID!;
   const rows = Object.entries(days)
-    .filter(([, r]) => r.activity_kcal != null || r.sleep_hours != null || r.resting_hr != null || r.hrv != null)
+    .filter(([, r]) => r.activity_kcal != null || r.sleep_hours != null || r.resting_hr != null || r.hrv != null || r.steps != null)
     .map(([date, r]) => ({ user_id: userId, date, source: "coros", ...r }));
 
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
