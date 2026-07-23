@@ -1636,21 +1636,21 @@ function bioAge(data) {
     delta -= years; // jünger → Alter runter
     factors.push({ label, val: (Math.round(val * 10) / 10) + (unit || ""), years: Math.round(years * 10) / 10, good: years >= 0 });
   };
-  add("VO₂max", vo2, 45, "high", 12, 4, "");
-  add("Ruhepuls", rhr, 58, "low", 12, 3, " bpm");
-  add("HRV", hrv, 55, "high", 40, 2.5, " ms");
+  add("VO₂max", vo2, 50, "high", 15, 4, "");
+  add("Ruhepuls", rhr, 52, "low", 14, 2.5, " bpm");
+  add("HRV", hrv, 70, "high", 50, 2, " ms");
   add("Schlaf", sleep, 7.5, "high", 1.5, 2, " h");
-  add("Aktivität", act, 700, "high", 500, 2, " kcal");
-  add("Kraft/Woche", strength, 150, "high", 120, 1.5, " min");
+  add("Aktivität", act, 900, "high", 600, 2, " kcal");
+  add("Kraft/Woche", strength, 150, "high", 150, 1.5, " min");
 
   let bio = chrono + delta;
-  bio = Math.max(chrono - 15, Math.min(chrono + 20, bio));
+  bio = Math.max(chrono - 12, Math.min(chrono + 18, bio));
 
   // Pace of Aging (Näherung): jüngeres 7-Tage-Fenster vs. 8–28-Tage-Baseline.
   const dRecent = win(7); const dBase = Array.from({ length: 21 }, (_, i) => dstr(i + 8));
   const miniDelta = (dds) => {
     let d = 0; const a2 = (v, r, hi, sp, w) => { if (v == null) return; const dir = hi ? v - r : r - v; d -= Math.max(-w, Math.min(w, (dir / sp) * w)); };
-    a2(avgKey(dds, "rhf"), 58, false, 12, 3); a2(avgKey(dds, "hrv"), 55, true, 40, 2.5); a2(avgKey(dds, "sleep"), 7.5, true, 1.5, 2); a2(avgAct(dds), 700, true, 500, 2);
+    a2(avgKey(dds, "rhf"), 52, false, 14, 2.5); a2(avgKey(dds, "hrv"), 70, true, 50, 2); a2(avgKey(dds, "sleep"), 7.5, true, 1.5, 2); a2(avgAct(dds), 900, true, 600, 2);
     return d;
   };
   const pace = Math.max(0.5, Math.min(1.5, Math.round((1 + (miniDelta(dRecent) - miniDelta(dBase)) / 10) * 100) / 100));
