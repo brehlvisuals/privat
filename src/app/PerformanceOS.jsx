@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   Flame, Dumbbell, Utensils, BarChart3, Plus, X, ChevronLeft, ChevronRight,
@@ -1658,48 +1658,98 @@ function bioAge(data) {
   return { chrono, bio: Math.round(bio * 10) / 10, delta: Math.round(delta * 10) / 10, pace, factors };
 }
 
-function AgeRing({ chrono, bio }) {
-  const younger = bio <= chrono;
-  const col = younger ? H.up : H.down;
-  const r = 52, c = 2 * Math.PI * r;
-  const frac = Math.max(0.05, Math.min(1, 1 - (bio - (chrono - 15)) / 35)); // jünger → voller
+// Organischer, sich verformender „Alters-Blob" (grün = jung) mit schwebenden Partikeln.
+function AgeBlob({ chrono, bio }) {
+  const diff = chrono - bio;                              // + = jünger
+  const col = diff >= -0.5 ? H.up : diff > -4 ? H.amber : H.down;
+  const t = clampN((diff + 6) / 16, 0, 1);                // 0..1 → jünger = größer/satter
+  const size = Math.round(212 + t * 40);
+  // Partikel deterministisch (stabil über Renders, kein Flackern).
+  const dots = useMemo(() => {
+    let seed = Math.round(bio * 131 + chrono * 17) || 1;
+    const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+    return Array.from({ length: 52 }, () => {
+      const ang = rnd() * Math.PI * 2, rad = 0.24 + rnd() * 0.5;
+      return {
+        x: 50 + Math.cos(ang) * rad * 50, y: 50 + Math.sin(ang) * rad * 50,
+        s: (1.4 + rnd() * 3.4).toFixed(1), d: (rnd() * 4).toFixed(2), du: (2.4 + rnd() * 3).toFixed(2),
+      };
+    });
+  }, [bio, chrono]);
+  const grad = `radial-gradient(circle at 50% 50%, #04110a 0%, #04110a 25%, ${col}33 37%, ${col}aa 51%, ${col}dd 60%, ${col}77 72%, ${col}22 87%, transparent 100%)`;
   return (
-    <svg width="150" height="150" viewBox="0 0 150 150" style={{ flexShrink: 0 }}>
-      <circle cx="75" cy="75" r={r} fill="none" stroke={H.bg2} strokeWidth="11" />
-      <circle cx="75" cy="75" r={r} fill="none" stroke={col} strokeWidth="11" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - frac)} transform="rotate(-90 75 75)" style={{ transition: "stroke-dashoffset 1s cubic-bezier(.22,1,.36,1)" }} />
-      <text x="75" y="68" textAnchor="middle" fill={H.text} fontSize="38" fontWeight="820">{Math.round(bio)}</text>
-      <text x="75" y="92" textAnchor="middle" fill={H.sub} fontSize="12" fontWeight="600">bio. Alter</text>
-    </svg>
+    <div style={{ position: "relative", width: size, height: size, margin: "8px auto 0" }}>
+      <div style={{ position: "absolute", inset: -26, background: `radial-gradient(circle, ${col}40 0%, transparent 62%)`, filter: "blur(20px)", animation: "glowPulse 5.5s ease-in-out infinite" }} />
+      <div style={{ position: "absolute", inset: 0, background: grad, borderRadius: "46% 54% 57% 43% / 49% 45% 55% 51%", filter: "blur(1.5px)", boxShadow: `inset 0 0 55px ${col}55`, animation: "blobMorph 10s ease-in-out infinite" }} />
+      {dots.map((p, i) => (
+        <span key={i} style={{ position: "absolute", left: p.x + "%", top: p.y + "%", width: p.s + "px", height: p.s + "px", borderRadius: "50%", background: col, transform: "translate(-50%,-50%)", boxShadow: `0 0 ${p.s * 2.5}px ${col}`, animation: `twinkle ${p.du}s ease-in-out ${p.d}s infinite` }} />
+      ))}
+      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+        <div style={{ fontSize: 62, fontWeight: 830, letterSpacing: -2.5, color: H.text, lineHeight: 1, fontVariantNumeric: "tabular-nums", textShadow: "0 2px 20px rgba(0,0,0,.5)" }}>{bio.toFixed(1)}</div>
+        <div style={{ fontSize: 10.5, letterSpacing: 1.8, textTransform: "uppercase", color: H.sub, fontWeight: 750, marginTop: 7 }}>Biologisches Alter</div>
+      </div>
+    </div>
+  );
+}
+
+// Alterungs-Tempo als Skala −1.0× … 1.0× … 3.0× mit Marker.
+function PaceBar({ pace }) {
+  const min = -1, max = 3;
+  const pos = clampN((pace - min) / (max - min), 0, 1) * 100;
+  const good = pace <= 1;
+  const c = good ? H.up : H.amber;
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase", color: H.faint, fontWeight: 700 }}>Alterungs-Tempo</div>
+          <div style={{ fontSize: 12.5, color: H.sub, marginTop: 3 }}>{good ? "langsamer als normal" : "schneller als normal"}</div>
+        </div>
+        <div style={{ fontSize: 32, fontWeight: 830, color: c, letterSpacing: -1, lineHeight: 1 }}>{pace.toFixed(1)}×</div>
+      </div>
+      <div style={{ position: "relative", height: 24 }}>
+        <div style={{ position: "absolute", top: 8, left: 0, right: 0, display: "flex", justifyContent: "space-between" }}>
+          {Array.from({ length: 33 }, (_, i) => { const near = Math.abs((i / 32) * 100 - pos) < 4; return <span key={i} style={{ width: 2, height: 8, borderRadius: 2, background: H.line, opacity: near ? 0 : 1 }} />; })}
+        </div>
+        <div style={{ position: "absolute", top: 0, left: pos + "%", transform: "translateX(-50%)", width: 4, height: 24, borderRadius: 3, background: c, boxShadow: `0 0 12px ${c}` }} />
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 11, color: H.faint, fontWeight: 600 }}>
+        <span>langsam</span><span>1.0×</span><span>schnell</span>
+      </div>
+    </div>
   );
 }
 
 function BioAge({ data }) {
   const r = bioAge(data);
   if (!r) return (
-    <Page title="Biologisches Alter" sub="Whoop-Style aus deinen Coros-Daten">
-      <Card><div style={{ fontSize: 14, color: H.sub, lineHeight: 1.55 }}>Sobald Coros dein Profil (Geburtsdatum) und ein paar Tage Health-Daten synchronisiert hat, erscheint hier dein biologisches Alter. Stoße auf „Heute" einen Sync an.</div></Card>
+    <Page title="Healthspan" sub="Biologisches Alter aus deinen Coros-Daten">
+      <Card><div style={{ fontSize: 14, color: H.sub, lineHeight: 1.55 }}>Sobald Coros dein Profil (Geburtsdatum) und ein paar Tage Health-Daten synchronisiert hat, erscheint hier dein biologisches Alter. Stoße auf „Übersicht" einen Sync an.</div></Card>
     </Page>
   );
   const younger = r.bio <= r.chrono;
   const diff = Math.round(Math.abs(r.chrono - r.bio) * 10) / 10;
+  const diffCol = younger ? H.up : H.down;
   return (
-    <Page title="Biologisches Alter" sub="Whoop-Style · aus deinen Coros-Daten">
-      <Card style={{ marginBottom: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-          <AgeRing chrono={r.chrono} bio={r.bio} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 800, color: younger ? H.up : H.down, lineHeight: 1.2 }}>{diff === 0 ? "genau dein Alter" : diff + " Jahre " + (younger ? "jünger" : "älter")}</div>
-            <div style={{ fontSize: 13, color: H.sub, marginTop: 3 }}>Chronologisch: {r.chrono} Jahre</div>
-            <div style={{ marginTop: 10, display: "inline-flex", alignItems: "baseline", gap: 6, background: H.glass, border: "1px solid " + H.glassLine, borderRadius: 12, padding: "8px 12px" }}>
-              <span style={{ fontSize: 18, fontWeight: 820, color: r.pace <= 1 ? H.up : H.amber }}>{r.pace.toFixed(2)}×</span>
-              <span style={{ fontSize: 11.5, color: H.sub }}>Pace of Aging</span>
-            </div>
-          </div>
-        </div>
-        <div style={{ fontSize: 12, color: H.sub, marginTop: 12, lineHeight: 1.5 }}>{r.pace < 1 ? "Du alterst aktuell langsamer als die Zeit — deine Gewohnheiten zahlen sich aus. 💪" : r.pace > 1 ? "Aktuell alterst du etwas schneller — Schlaf/Erholung priorisieren." : "Du alterst im Takt der Zeit."}</div>
+    <div style={{ padding: "22px 18px 8px" }}>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 12, letterSpacing: 2.5, textTransform: "uppercase", color: H.sub, fontWeight: 820 }}>Healthspan</div>
+        <div style={{ fontSize: 11.5, color: H.faint, marginTop: 3 }}>aktualisiert mit jedem Sync</div>
+      </div>
+
+      <AgeBlob chrono={r.chrono} bio={r.bio} />
+
+      <div style={{ textAlign: "center", marginTop: 14 }}>
+        <div style={{ fontSize: 20, fontWeight: 830, color: diffCol, letterSpacing: -0.4 }}>{diff === 0 ? "genau dein Alter" : diff + " Jahre " + (younger ? "jünger" : "älter")}</div>
+        <div style={{ fontSize: 13, color: H.sub, marginTop: 4 }}>Chronologisch bist du {r.chrono}</div>
+      </div>
+
+      <Card style={{ marginTop: 20 }}>
+        <PaceBar pace={r.pace} />
+        <div style={{ fontSize: 12, color: H.sub, marginTop: 15, lineHeight: 1.5 }}>{r.pace < 1 ? "Du alterst aktuell langsamer als die Zeit — deine Gewohnheiten zahlen sich aus. 💪" : r.pace > 1 ? "Aktuell alterst du etwas schneller — Schlaf & Erholung priorisieren." : "Du alterst im Takt der Zeit."}</div>
       </Card>
 
-      <Label style={{ margin: "0 4px 8px" }}>Was dein Alter beeinflusst</Label>
+      <Label style={{ margin: "22px 4px 8px" }}>Was dein Alter beeinflusst</Label>
       {r.factors.map((f, i) => (
         <Card key={i} style={{ marginBottom: 8, padding: "12px 15px", display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -1709,8 +1759,8 @@ function BioAge({ data }) {
           <div style={{ fontSize: 15, fontWeight: 800, color: f.good ? H.up : H.down, fontVariantNumeric: "tabular-nums" }}>{f.years > 0 ? "−" : f.years < 0 ? "+" : "±"}{Math.abs(f.years)} J</div>
         </Card>
       ))}
-      <div style={{ fontSize: 11.5, color: H.faint, textAlign: "center", marginTop: 8, lineHeight: 1.5 }}>Modell nach WHOOP-Prinzip (Referenzwerte je Metrik). Fettfreie Masse & Schritte fehlen noch — mit Waage-/Schrittdaten wird's noch genauer. „−" = macht dich jünger.</div>
-    </Page>
+      <div style={{ fontSize: 11.5, color: H.faint, textAlign: "center", marginTop: 8, lineHeight: 1.5 }}>Aus VO₂max, Ruhepuls, HRV, Schlaf, Aktivität & Kraft. Fettfreie Masse & Schritte fehlen noch — mit Waage-/Schrittdaten wird's noch genauer. „−" = macht dich jünger.</div>
+    </div>
   );
 }
 
@@ -1812,6 +1862,14 @@ const Style = () => (<style>{`
   @keyframes popDot{ from{opacity:0; transform:scale(.4)} to{opacity:1; transform:scale(1)} }
   @keyframes draw{ to{ stroke-dashoffset:0 } }
   @keyframes splashOut{ 0%,62%{opacity:1} 100%{opacity:0} }
+  @keyframes blobMorph{
+    0%,100%{ border-radius:46% 54% 57% 43% / 49% 45% 55% 51%; }
+    25%{ border-radius:58% 42% 48% 52% / 56% 50% 50% 44%; }
+    50%{ border-radius:43% 57% 53% 47% / 45% 58% 42% 55%; }
+    75%{ border-radius:52% 48% 43% 57% / 51% 42% 58% 49%; }
+  }
+  @keyframes twinkle{ 0%,100%{opacity:.18; transform:translate(-50%,-50%) scale(.65)} 50%{opacity:1; transform:translate(-50%,-50%) scale(1.15)} }
+  @keyframes glowPulse{ 0%,100%{opacity:.5; transform:scale(.97)} 50%{opacity:.85; transform:scale(1.05)} }
   .spin{ animation:spin 1s linear infinite; }
   @keyframes spin{ to{ transform:rotate(360deg) } }
   .rotate-hint{ display:none }
