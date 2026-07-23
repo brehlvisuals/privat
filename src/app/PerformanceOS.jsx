@@ -1658,7 +1658,14 @@ function bioAge(data) {
   };
   const pace = Math.max(0.5, Math.min(1.5, Math.round((1 + (miniDelta(dRecent) - miniDelta(dBase)) / 10) * 100) / 100));
 
-  return { chrono, bio: Math.round(bio * 10) / 10, delta: Math.round(delta * 10) / 10, pace, factors };
+  // Das Tempo ist ein Trend (aktuell vs. eigener Schnitt davor). Ohne genug
+  // Baseline-Historie wäre der Wert irreführend → erst ab ~14 Tagen im
+  // Vergleichsfenster freigeben. histDays = Tage mit Daten in den letzten 28.
+  const hasData = (dds) => dds.filter((d) => { const c = data.context[d] || {}; return c.rhf != null || c.hrv != null || c.sleep != null || actOf(data, d) != null; }).length;
+  const paceReady = hasData(dBase) >= 14;
+  const histDays = hasData(win(28));
+
+  return { chrono, bio: Math.round(bio * 10) / 10, delta: Math.round(delta * 10) / 10, pace, paceReady, histDays, factors };
 }
 
 // Organischer, sich verformender „Alters-Blob" (grün = jung) mit schwebenden Partikeln.
@@ -1748,8 +1755,21 @@ function BioAge({ data }) {
       </div>
 
       <Card style={{ marginTop: 20 }}>
-        <PaceBar pace={r.pace} />
-        <div style={{ fontSize: 12, color: H.sub, marginTop: 15, lineHeight: 1.5 }}>{r.pace < 1 ? "Du alterst aktuell langsamer als die Zeit — deine Gewohnheiten zahlen sich aus. 💪" : r.pace > 1 ? "Aktuell alterst du etwas schneller — Schlaf & Erholung priorisieren." : "Du alterst im Takt der Zeit."}</div>
+        {r.paceReady ? (<>
+          <PaceBar pace={r.pace} />
+          <div style={{ fontSize: 12, color: H.sub, marginTop: 15, lineHeight: 1.5 }}>{r.pace < 1 ? "Du alterst aktuell langsamer als die Zeit — deine Gewohnheiten zahlen sich aus. 💪" : r.pace > 1 ? "Aktuell alterst du etwas schneller — Schlaf & Erholung priorisieren." : "Du alterst im Takt der Zeit."}</div>
+        </>) : (<>
+          <div style={{ fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase", color: H.faint, fontWeight: 700 }}>Alterungs-Tempo</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 11 }}>
+            <span className="spin" style={{ width: 15, height: 15, border: "2px solid " + H.line, borderTopColor: H.blue, borderRadius: "50%", flexShrink: 0 }} />
+            <div style={{ fontSize: 15, fontWeight: 780 }}>Sammelt noch Daten</div>
+          </div>
+          <div style={{ fontSize: 12, color: H.sub, marginTop: 10, lineHeight: 1.5 }}>Das Tempo vergleicht deine letzten Tage mit deinem eigenen Schnitt der Wochen davor — ab ~4 Wochen täglicher Coros-Daten wird es aussagekräftig.</div>
+          <div style={{ marginTop: 12 }}>
+            <div style={{ height: 6, borderRadius: 4, background: H.bg2, overflow: "hidden" }}><div className="b" style={{ width: clampN((r.histDays / 28) * 100, 4, 100) + "%", height: "100%", background: H.grad, borderRadius: 4 }} /></div>
+            <div style={{ fontSize: 11.5, color: H.faint, marginTop: 6, fontWeight: 600 }}>{r.histDays} von ~28 Tagen</div>
+          </div>
+        </>)}
       </Card>
 
       <Label style={{ margin: "22px 4px 8px" }}>Was dein Alter beeinflusst</Label>
