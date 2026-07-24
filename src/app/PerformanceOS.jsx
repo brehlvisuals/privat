@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import {
   Flame, Dumbbell, Utensils, BarChart3, Plus, X, ChevronLeft, ChevronRight,
@@ -1742,6 +1743,9 @@ function bioAge(data) {
     if (key === "act") return avgAct(dds);
     if (key === "vo2") return data.coros && data.coros.fitness ? data.coros.fitness.vo2max : null;
     if (key === "strength") return strengthPerWeek(dds);
+    // Körperfett: aktuellster Messwert (bis 45 Tage zurück, inkl. heute) statt
+    // Mittel — Körperzusammensetzung ist ein Ist-Wert, oft nur sporadisch gemessen.
+    if (key === "bodyFat") { for (let i = 0; i <= 45; i++) { const c = data.context[dstr(i)] || {}; if (typeof c.bodyFat === "number") return c.bodyFat; } return null; }
     return avgKey(dds, key);
   };
 
@@ -2019,11 +2023,14 @@ function Sheet({ title, close, children, full }) {
   const inner = full
     ? { height: "92dvh", maxHeight: "92dvh", display: "flex", flexDirection: "column", borderRadius: "20px 20px 0 0" }
     : { maxHeight: "82%", overflowY: "auto", borderRadius: "20px 20px 0 0" };
-  return (<div onClick={close} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 70 }}>
+  const overlay = (<div onClick={close} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 70 }}>
     <div onClick={(e) => e.stopPropagation()} className={full ? "" : "scroll"} style={{ width: "100%", maxWidth: 460, background: H.card, border: "1px solid " + H.line, borderBottom: "none", padding: 18, boxSizing: "border-box", ...inner }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexShrink: 0 }}><span style={{ fontSize: 17, fontWeight: 780 }}>{title}</span><button onClick={close} className="press" style={{ all: "unset", cursor: "pointer", color: H.sub }}><X size={20} /></button></div>
       {full ? <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>{children}</div> : children}
     </div></div>);
+  // Via Portal direkt an den <body>, damit transformierte Vorfahren (Tab-Fade auf
+  // iOS) das position:fixed-Overlay nicht ans Seitenende schieben.
+  return typeof document !== "undefined" ? createPortal(overlay, document.body) : overlay;
 }
 const Field = ({ label, children }) => <div style={{ marginBottom: 12 }}><div style={{ fontSize: 12, color: H.sub, marginBottom: 6 }}>{label}</div>{children}</div>;
 const sheetInput = { width: "100%", padding: "12px 14px", borderRadius: 11, border: "1px solid transparent", background: H.bg2, color: H.text, fontSize: 15, boxSizing: "border-box", outline: "none" };
