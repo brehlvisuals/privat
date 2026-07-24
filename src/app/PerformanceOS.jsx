@@ -1749,12 +1749,16 @@ function bioAge(data) {
     return avgKey(dds, key);
   };
 
+  // Kalibrierung: das Roh-Modell fällt großzügig aus (Summe vieler Top-Metriken).
+  // CALIB eicht die Gesamt-Skala an Felix' bekanntes WHOOP-Alter (~20–21) an,
+  // ohne die Verhältnisse der Faktoren untereinander zu verzerren.
+  const CALIB = 0.7;
   const factors = []; let delta = 0;
   for (const m of AGE_METRICS) {
     const val = avgOf(dd, m.key);
     if (val == null) continue;
     const dir = m.dir === "high" ? val - m.ref : m.ref - val;
-    const years = clampN((dir / m.span) * m.weight, -m.weight, m.weight);
+    const years = clampN((dir / m.span) * m.weight, -m.weight, m.weight) * CALIB;
     delta -= years; // jünger → Alter runter
     factors.push({ ...m, valNum: val, val: (Math.round(val * 10) / 10).toLocaleString("de-DE") + m.unit, years: Math.round(years * 10) / 10, good: years >= 0 });
   }
