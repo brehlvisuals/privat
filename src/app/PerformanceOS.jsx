@@ -158,6 +158,7 @@ function mergeContext(d, ctxRows) {
       ...(r.resting_hr != null ? { rhf: r.resting_hr } : {}),
       ...(r.steps != null ? { steps: r.steps } : {}),
       ...(r.weight_kg != null ? { weight: Number(r.weight_kg) } : {}),
+      ...(r.body_fat != null ? { bodyFat: Number(r.body_fat) } : {}),
     };
   }
   return d;
@@ -271,12 +272,12 @@ function buildCoachContext(data) {
   } else L.push("Noch keine Gewichtsdaten synchronisiert.");
 
   // Tages-Metriken der letzten 21 Tage
-  L.push("\n== HEALTH-METRIKEN (Aktiv-kcal / Schlaf h / Ruhepuls / HRV / Gewicht) ==");
+  L.push("\n== HEALTH-METRIKEN (Aktiv-kcal / Schritte / Schlaf h / Ruhepuls / HRV / Gewicht / Körperfett %) ==");
   const dayLines = [];
   for (let i = 0; i <= 21; i++) {
     const dd = dstr(i); const c = data.context[dd]; const a = actOf(data, dd);
     if (!c && a == null) continue;
-    dayLines.push(fmtShort(dd) + ": Akt " + num(a) + ", Schlaf " + num(c && c.sleep) + ", RHF " + num(c && c.rhf) + ", HRV " + num(hrvOf(data, dd)) + ", Gew " + num(c && c.weight));
+    dayLines.push(fmtShort(dd) + ": Akt " + num(a) + ", Schritte " + num(c && c.steps) + ", Schlaf " + num(c && c.sleep) + ", RHF " + num(c && c.rhf) + ", HRV " + num(hrvOf(data, dd)) + ", Gew " + num(c && c.weight) + ", KF " + num(c && c.bodyFat));
   }
   L.push(dayLines.length ? dayLines.join("\n") : "keine Health-Daten");
 
@@ -1513,6 +1514,12 @@ function Home({ data, commit, reload }) {
   const expDays = c0.access_expires ? Math.floor((c0.access_expires - Date.now()) / 864e5) : null;
   const needReauth = expDays != null && expDays <= 5;
 
+  // Verlaufs-Graph pro Kachel: Messpunkte einer Metrik über alle Tage (aufsteigend).
+  const [hist, setHist] = useState(null);
+  const ptsOf = (key) => Object.keys(data.context || {}).filter((d) => typeof (data.context[d] || {})[key] === "number").sort().map((d) => ({ date: d, val: data.context[d][key] }));
+  const actPts = () => Array.from(new Set([...Object.keys(data.context || {}), ...Object.keys(data.activityAdj || {})])).sort().map((d) => ({ date: d, val: actOf(data, d) })).filter((p) => typeof p.val === "number");
+  const int0 = (v) => Math.round(v).toLocaleString("de-DE");
+
   return (
     <Page title={greet} subEl={<div>
       <div style={{ fontSize: 13, color: H.faint }}>{dateStr}</div>
@@ -1563,16 +1570,16 @@ function Home({ data, commit, reload }) {
           )}
         </Card>
       )}
-      <Label style={{ margin: "0 4px 8px" }}>Heute · Coros{ctx.weight != null ? " · Gewicht: Apple Health" : ""}</Label>
+      <Label style={{ margin: "0 4px 8px" }}>Heute · Coros{ctx.weight != null || ctx.bodyFat != null ? " · Gewicht & Körperfett: Apple Health" : ""}</Label>
       <div style={{ display: "flex", gap: 9, marginBottom: 9 }}>
-        <Stat label="Aktiv-kcal" value={dash(act)} accent />
-        <Stat label="Schritte" value={ctx.steps != null ? ctx.steps.toLocaleString("de-DE") : "—"} />
-        <Stat label="Schlaf" value={ctx.sleep != null ? de(ctx.sleep) + " h" : "—"} />
+        <Stat label="Aktiv-kcal" value={dash(act)} accent onClick={() => setHist({ title: "Aktiv-Kalorien", unit: " kcal", points: actPts(), fmt: int0 })} />
+        <Stat label="Schritte" value={ctx.steps != null ? ctx.steps.toLocaleString("de-DE") : "—"} onClick={() => setHist({ title: "Schritte", unit: "", points: ptsOf("steps"), fmt: int0 })} />
+        <Stat label="Schlaf" value={ctx.sleep != null ? de(ctx.sleep) + " h" : "—"} onClick={() => setHist({ title: "Schlaf", unit: " h", points: ptsOf("sleep"), fmt: de1 })} />
       </div>
       <div style={{ display: "flex", gap: 9, marginBottom: 14 }}>
-        <Stat label="Ruhepuls" value={dash(ctx.rhf)} />
-        <Stat label="Stress" value={ctx.stress != null ? ctx.stress : "—"} />
-        <Stat label="Gewicht" value={ctx.weight != null ? de(ctx.weight) + " kg" : "—"} />
+        <Stat label="Ruhepuls" value={dash(ctx.rhf)} onClick={() => setHist({ title: "Ruhepuls", unit: " bpm", points: ptsOf("rhf"), fmt: int0 })} />
+        <Stat label="Gewicht" value={ctx.weight != null ? de(ctx.weight) + " kg" : "—"} onClick={() => setHist({ title: "Gewicht", unit: " kg", points: ptsOf("weight"), fmt: de1 })} />
+        <Stat label="Körperfett" value={ctx.bodyFat != null ? de1(ctx.bodyFat) + " %" : "—"} onClick={() => setHist({ title: "Körperfett", unit: " %", points: ptsOf("bodyFat"), fmt: de1 })} />
       </div>
 
       <Card style={{ marginBottom: 14 }}>
@@ -1590,7 +1597,35 @@ function Home({ data, commit, reload }) {
       <Label style={{ margin: "14px 4px 8px", color: H.up }}><Utensils size={12} style={{ verticalAlign: "-2px" }} /> Ernährung</Label>
       <RecCard Icon={Utensils} c={H.blue} t={pLeft > 0 ? "Noch " + pLeft + " g Protein bis zu deinem Ziel (" + set.protein + " g)." : "Protein-Ziel erreicht 💪"} />
       <RecCard Icon={Flame} c={kLeft >= 0 ? H.up : H.amber} t={act == null ? "Sobald Coros heute synct, siehst du hier dein Kalorien-Budget." : (kLeft >= 0 ? "Noch " + kLeft + " kcal bis zum Verbrauch (" + verbrauch + " kcal)." : Math.abs(kLeft) + " kcal über deinem Verbrauch.")} />
+      {hist && <MetricHistory {...hist} close={() => setHist(null)} />}
     </Page>
+  );
+}
+// Verlaufs-Ansicht einer Metrik: Kennzahlen + wischbarer Graph über alle Messungen.
+function MetricHistory({ title, unit, points, fmt, close }) {
+  const f = fmt || ((v) => v);
+  if (!points || !points.length) return (
+    <Sheet title={title} close={close}>
+      <div style={{ fontSize: 13.5, color: H.sub, lineHeight: 1.55, padding: "4px 0 6px" }}>Noch keine Daten. Sobald {title} synchronisiert wurde, erscheint hier dein Verlauf.</div>
+    </Sheet>
+  );
+  const vals = points.map((p) => p.val);
+  const cur = vals[vals.length - 1], first = vals[0];
+  const lo = Math.min(...vals), hi = Math.max(...vals), avgv = vals.reduce((a, b) => a + b, 0) / vals.length;
+  const change = Math.round((cur - first) * 10) / 10;
+  return (
+    <Sheet title={title} close={close}>
+      <div style={{ display: "flex", gap: 9, marginBottom: 6 }}>
+        <Stat label="Aktuell" value={f(cur) + unit} accent />
+        <Stat label="Ø" value={f(Math.round(avgv * 10) / 10) + unit} />
+        <Stat label="Spanne" value={f(lo) + "–" + f(hi)} />
+      </div>
+      <Card style={{ padding: "16px 10px 6px", marginTop: 8 }}>
+        <Label style={{ padding: "0 6px 4px" }}>Verlauf · {points.length} Messungen · wischen</Label>
+        <Chart points={points} unit={unit} fmt={f} />
+      </Card>
+      {points.length >= 2 && <div style={{ fontSize: 12.5, color: H.sub, marginTop: 12, textAlign: "center" }}>Seit erster Messung ({fmtShort(points[0].date)}): <span style={{ fontWeight: 750, color: change === 0 ? H.sub : (title === "Körperfett" || title === "Gewicht" || title === "Ruhepuls" ? (change < 0 ? H.up : H.down) : (change > 0 ? H.up : H.down)) }}>{change > 0 ? "+" : ""}{f(change)}{unit}</span></div>}
+    </Sheet>
   );
 }
 const RecCard = ({ Icon, c, t }) => <div style={{ display: "flex", gap: 11, alignItems: "flex-start", background: H.card, borderRadius: 14, border: "1px solid " + H.line, borderLeft: "3px solid " + c, padding: "13px 14px", marginBottom: 8 }}><Icon size={16} color={c} style={{ marginTop: 1, flexShrink: 0 }} /><span style={{ fontSize: 13.5, lineHeight: 1.45 }}>{t}</span></div>;
@@ -1680,6 +1715,9 @@ const AGE_METRICS = [
   { key: "strength", label: "Kraft/Woche", unit: " min", ref: 150, opt: 200, dir: "high", span: 150, weight: 1.5,
     why: "Krafttraining pro Woche. Erhält Muskelmasse & Knochendichte – einer der wichtigsten Hebel gegen das Altern.",
     tips: ["2–3 Krafteinheiten / Woche", "Progressiv schwerer werden", "Große Grundübungen priorisieren"] },
+  { key: "bodyFat", label: "Körperfett", unit: " %", ref: 18, opt: 11, dir: "low", span: 8, weight: 2,
+    why: "Körperfettanteil (von deiner Arboleaf-Waage). Im athletischen Bereich (Männer ~10–15 %) stehen niedrigere Werte für mehr Muskelanteil und bessere Stoffwechselgesundheit – zu niedrig ist aber ungesund. Reines Körpergewicht fließt bewusst nicht ein, da es ohne Körperzusammensetzung nichts über Gesundheit aussagt.",
+    tips: ["Leichtes, moderates Kaloriendefizit", "Protein hoch halten (Muskelerhalt)", "Krafttraining beibehalten", "Ausreichend Schlaf & wenig Alkohol"] },
 ];
 // Fürs Tempo nur die täglichen Metriken (VO₂max & Kraft haben keinen Tagesverlauf).
 const PACE_METRICS = AGE_METRICS.filter((m) => ["rhf", "hrv", "sleep", "act", "steps"].includes(m.key));
@@ -1859,7 +1897,7 @@ function BioAge({ data }) {
           <ChevronRight size={17} color={H.faint} style={{ flexShrink: 0, marginLeft: -4 }} />
         </Card>
       ))}
-      <div style={{ fontSize: 11.5, color: H.faint, textAlign: "center", marginTop: 8, lineHeight: 1.5 }}>Aus VO₂max, Ruhepuls, HRV, Schlaf, Aktivität, Schritten & Kraft. Fettfreie Masse fehlt noch — kommt über die Waage. „−" = macht dich jünger.</div>
+      <div style={{ fontSize: 11.5, color: H.faint, textAlign: "center", marginTop: 8, lineHeight: 1.5 }}>Aus VO₂max, Ruhepuls, HRV, Schlaf, Aktivität, Schritten, Kraft & Körperfett. „−" = macht dich jünger.</div>
 
       {sel && <MetricSheet f={sel} close={() => setSel(null)} />}
     </div>
@@ -1939,15 +1977,18 @@ const Page = ({ title, sub, subEl, backFn, action, children }) => (
 const Card = ({ children, style, onClick, className }) => <div onClick={onClick} className={"glass" + (className ? " " + className : "")} style={{ background: H.glass, border: "1px solid " + H.glassLine, borderRadius: 20, padding: 16, ...style }}>{children}</div>;
 const Label = ({ children, style }) => <div style={{ fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase", color: H.faint, fontWeight: 700, marginBottom: 8, ...style }}>{children}</div>;
 const Bar = ({ pct, color }) => <div style={{ height: 7, borderRadius: 4, background: H.bg2, overflow: "hidden" }}><div className="b" style={{ width: pct + "%", height: "100%", background: color, borderRadius: 4 }} /></div>;
-const Stat = ({ label, value, accent, color }) => (<div className={accent ? "" : "glass"} style={{ flex: 1, background: accent ? H.grad : H.glass, border: accent ? "none" : "1px solid " + H.glassLine, borderRadius: 16, padding: "12px", boxShadow: accent ? "0 6px 20px -6px " + H.blueGlow : "none" }}><div style={{ fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase", color: accent ? "rgba(255,255,255,.75)" : H.faint, fontWeight: 700 }}>{label}</div><div style={{ fontSize: 17, fontWeight: 800, marginTop: 3, color: color || (accent ? "#fff" : H.text), fontVariantNumeric: "tabular-nums", letterSpacing: -0.3 }}>{value}</div></div>);
+const Stat = ({ label, value, accent, color, onClick }) => (<div onClick={onClick} className={(accent ? "" : "glass") + (onClick ? " press" : "")} style={{ flex: 1, minWidth: 0, background: accent ? H.grad : H.glass, border: accent ? "none" : "1px solid " + H.glassLine, borderRadius: 16, padding: "12px", boxShadow: accent ? "0 6px 20px -6px " + H.blueGlow : "none", cursor: onClick ? "pointer" : "default", position: "relative" }}><div style={{ fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase", color: accent ? "rgba(255,255,255,.75)" : H.faint, fontWeight: 700 }}>{label}</div><div style={{ fontSize: 17, fontWeight: 800, marginTop: 3, color: color || (accent ? "#fff" : H.text), fontVariantNumeric: "tabular-nums", letterSpacing: -0.3 }}>{value}</div>{onClick && <BarChart3 size={11} color={accent ? "rgba(255,255,255,.6)" : H.faint} style={{ position: "absolute", top: 10, right: 10 }} />}</div>);
 const Mini = ({ label, v, good }) => <div style={{ flex: 1 }}><div style={{ fontSize: 10, color: H.faint, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 700 }}>{label}</div><div style={{ fontSize: 13, fontWeight: 700, marginTop: 2, color: good === true ? H.up : good === false ? H.down : H.text }}>{v}</div></div>;
 function Ring({ score }) { const r = 36, c = 2 * Math.PI * r, off = c * (1 - score / 100), col = score >= 70 ? H.up : score >= 50 ? H.amber : H.down; return (<svg width="88" height="88" viewBox="0 0 100 100" style={{ flexShrink: 0 }}><circle cx="50" cy="50" r={r} fill="none" stroke={H.bg2} strokeWidth="8" /><circle cx="50" cy="50" r={r} fill="none" stroke={col} strokeWidth="8" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={off} transform="rotate(-90 50 50)" style={{ transition: "stroke-dashoffset .9s ease" }} /><text x="50" y="50" textAnchor="middle" dominantBaseline="central" fill={H.text} fontSize="27" fontWeight="800">{score}</text></svg>); }
-function Chart({ points }) {
+function Chart({ points, unit = " kg", fmt }) {
   const [sel, setSel] = useState(null);
   const ref = useRef(null);
   const W = 400, Ht = 150, pad = { l: 10, r: 10, t: 16, b: 22 };
-  if (points.length < 2) return <div style={{ color: H.faint, fontSize: 13, padding: 16 }}>Mehr Sessions nötig.</div>;
-  const vals = points.map((p) => p.val), min = Math.min(...vals) - 3, max = Math.max(...vals) + 3, rng = max - min || 1;
+  if (points.length < 2) return <div style={{ color: H.faint, fontSize: 13, padding: 16 }}>Mehr Messungen nötig.</div>;
+  const fv = (v) => (fmt ? fmt(v) : v);
+  const vals = points.map((p) => p.val), lo = Math.min(...vals), hi = Math.max(...vals);
+  const padV = (hi - lo) * 0.15 || Math.max(1, Math.abs(hi) * 0.05);
+  const min = lo - padV, max = hi + padV, rng = max - min || 1;
   const x = (i) => pad.l + (i / (points.length - 1)) * (W - pad.l - pad.r), y = (v) => pad.t + (1 - (v - min) / rng) * (Ht - pad.t - pad.b);
   const line = points.map((p, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(p.val).toFixed(1)).join(" ");
   const area = line + " L" + x(points.length - 1) + " " + (Ht - pad.b) + " L" + x(0) + " " + (Ht - pad.b) + " Z";
@@ -1959,7 +2000,7 @@ function Chart({ points }) {
   return (
     <div ref={ref} style={{ position: "relative", touchAction: "pan-y", userSelect: "none", cursor: "pointer" }}
       onTouchStart={onTouch} onTouchMove={onTouch} onMouseDown={pick && ((e) => pick(e.clientX))} onMouseMove={onMouse}>
-      <div style={{ position: "absolute", top: -2, left: labelLeft + "%", transform: "translateX(-50%)", background: H.grad, color: "#fff", fontSize: 11, fontWeight: 750, padding: "3px 9px", borderRadius: 9, whiteSpace: "nowrap", pointerEvents: "none", boxShadow: "0 4px 12px -4px " + H.blueGlow }}>{points[si].val} kg · {fmtShort(points[si].date)}</div>
+      <div style={{ position: "absolute", top: -2, left: labelLeft + "%", transform: "translateX(-50%)", background: H.grad, color: "#fff", fontSize: 11, fontWeight: 750, padding: "3px 9px", borderRadius: 9, whiteSpace: "nowrap", pointerEvents: "none", boxShadow: "0 4px 12px -4px " + H.blueGlow }}>{fv(points[si].val)}{unit} · {fmtShort(points[si].date)}</div>
       <svg viewBox={"0 0 " + W + " " + Ht} style={{ width: "100%", display: "block", marginTop: 14 }}>
         <defs><linearGradient id="cg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={H.blue} stopOpacity="0.28" /><stop offset="100%" stopColor={H.blue} stopOpacity="0" /></linearGradient></defs>
         <path d={area} fill="url(#cg)" />

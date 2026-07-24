@@ -42,6 +42,7 @@ const COLUMN_MAP: Record<string, { col: string; int: boolean }> = {
   resting_heart_rate: { col: "resting_hr", int: true },
   weight_body_mass: { col: "weight_kg", int: false },
   sleep_analysis: { col: "sleep_hours", int: false },
+  body_fat_percentage: { col: "body_fat", int: false },
 };
 
 function toNum(v: unknown): number | null {
@@ -148,7 +149,12 @@ export async function POST(request: Request) {
         if (/kj/i.test(unitsOf[name] || "")) value = value / 4.184;
         metricsObj[name] = Math.round(value * 1000) / 1000;
         const map = COLUMN_MAP[name];
-        if (map) rec[map.col] = map.int ? Math.round(value) : Math.round(value * 100) / 100;
+        if (map) {
+          let v = value;
+          // Apple liefert Körperfett teils als Bruch (0.152) statt Prozent (15.2).
+          if (name === "body_fat_percentage" && v > 0 && v <= 1) v = v * 100;
+          rec[map.col] = map.int ? Math.round(v) : Math.round(v * 100) / 100;
+        }
       }
       metricsObj["_units"] = unitsOf;
       return rec;
@@ -182,6 +188,7 @@ export async function POST(request: Request) {
     ["hrv", "hrv", true],
     ["resting_hr", "resting_hr", true],
     ["weight_kg", "weight_kg", false],
+    ["body_fat", "body_fat", false],
     ["stress", "stress", false],
   ];
   let any = false;
