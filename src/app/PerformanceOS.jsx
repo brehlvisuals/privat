@@ -20,6 +20,15 @@ const H = {
 /* ---------- helpers ---------- */
 const e1rm = (w, r) => Math.round(w * (1 + r / 30));
 const bestSet = (s) => s.reduce((b, x) => (e1rm(x.w, x.r) > e1rm(b.w, b.r) ? x : b), s[0]);
+// Leistungs-Trend eines Satzes ggü. Referenzsatz per geschätztem 1RM (Gewicht×Wdh
+// fair verrechnet). Grün = stärker, Rot = schwächer, null = gleich/kein Vergleich.
+// So färbt mehr Gewicht bei weniger Wdh korrekt grün, wenn das e1RM insgesamt steigt.
+const setTrend = (w, r, prev) => {
+  if (w === "" || w == null || r === "" || r == null || !prev || prev.w == null || prev.r == null) return null;
+  const cur = e1rm(dec(w), dec(r)), ref = e1rm(dec(prev.w), dec(prev.r));
+  if (!cur || !ref) return null;
+  return cur > ref ? H.up : cur < ref ? H.down : null;
+};
 const dstr = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
 const today = dstr(0);
 const fmtShort = (s) => new Date(s).toLocaleDateString("de-DE", { day: "2-digit", month: "short" });
@@ -636,7 +645,7 @@ function Training({ data, commit, active, setActive }) {
   }, [mode]);
 
   if (mode === "detail" && detailEx) return <Detail ex={detailEx} sess={sessForEx(detailEx.id)} context={data.context} back={() => setMode("library")} onSave={(patch) => { const ne = { ...detailEx, ...patch }; setDetailEx(ne); commit({ ...data, exercises: data.exercises.map((x) => (x.id === ne.id ? { ...x, ...patch } : x)) }); }} />;
-  if (mode === "wdetail" && detailW) { const w = data.workouts.find((x) => x.id === detailW) || null; if (!w) { setMode("workout"); return null; } return <WorkoutDetail w={w} back={() => setMode("workout")} onSave={(nw) => commit({ ...data, workouts: data.workouts.map((x) => (x.id === nw.id ? nw : x)) })} onDelete={() => { commit({ ...data, workouts: data.workouts.filter((x) => x.id !== w.id) }); setMode("workout"); }} />; }
+  if (mode === "wdetail" && detailW) { const w = data.workouts.find((x) => x.id === detailW) || null; if (!w) { setMode("workout"); return null; } return <WorkoutDetail w={w} data={data} back={() => setMode("workout")} onSave={(nw) => commit({ ...data, workouts: data.workouts.map((x) => (x.id === nw.id ? nw : x)) })} onDelete={() => { commit({ ...data, workouts: data.workouts.filter((x) => x.id !== w.id) }); setMode("workout"); }} />; }
 
   const startWorkout = () => setActive({ name: "", startedAt: Date.now(), exercises: [] });
   const addEx = (ex) => { setActive((a) => ({ ...a, exercises: [...a.exercises, { exId: ex.id, name: ex.name, gym: ex.gym, note: "", sets: [] }] })); setPicker(false); };
@@ -714,10 +723,20 @@ function Records({ data }) {
   </div>);
 }
 
-function WorkoutDetail({ w, back, onDelete, onSave }) {
+function WorkoutDetail({ w, data, back, onDelete, onSave }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(w);
   const src = editing ? draft : w;
+  // Sätze derselben Übung aus dem letzten Workout VOR diesem (für Farb-Vergleich).
+  const prevSetsFor = (ex) => {
+    const past = (data && data.workouts || [])
+      .filter((x) => x.id !== w.id && x.date <= w.date && x.exercises.some((e) => (ex.exId && e.exId === ex.exId) || e.name === ex.name))
+      .sort((a, b) => (a.date < b.date ? -1 : 1));
+    if (!past.length) return null;
+    const p = past[past.length - 1];
+    const e = p.exercises.find((e) => (ex.exId && e.exId === ex.exId) || e.name === ex.name);
+    return e && e.sets.length ? e.sets : null;
+  };
   const totalSets = src.exercises.reduce((a, e) => a + e.sets.length, 0);
   const vol = src.exercises.reduce((a, e) => a + e.sets.reduce((s, x) => s + dec(x.w) * dec(x.r), 0), 0);
   const totalReps = src.exercises.reduce((a, e) => a + e.sets.reduce((s, x) => s + dec(x.r), 0), 0);
@@ -761,18 +780,21 @@ function WorkoutDetail({ w, back, onDelete, onSave }) {
         const evol = e.sets.reduce((s, x) => s + x.w * x.r, 0);
         const best = e.sets.length ? bestSet(e.sets) : null;
         const top = best ? e1rm(best.w, best.r) : 0;
+        const prevSets = editing ? null : prevSetsFor(e);
         return (
           <Card key={i} style={{ marginBottom: 9 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 15, fontWeight: 720, color: H.blue }}>{e.name}</span><span style={{ fontSize: 12, color: H.sub }}>{e.sets.length} Sätze</span></div>
             {e.gym && <div style={{ fontSize: 11.5, color: H.faint, marginTop: 1 }}><MapPin size={10} style={{ verticalAlign: "-1px" }} /> {e.gym}</div>}
             <div style={{ display: "grid", gridTemplateColumns: "26px 1fr 1fr", gap: 8, margin: "10px 0 2px" }}>{["#", "KG", "WDH"].map((h, j) => <span key={j} style={{ fontSize: 10, letterSpacing: 1, color: H.faint, fontWeight: 700, textAlign: j ? "left" : "center" }}>{h}</span>)}</div>
-            {e.sets.map((s, j) => (
+            {e.sets.map((s, j) => {
+              const col = prevSets ? setTrend(s.w, s.r, prevSets[j]) : null;
+              return (
               <div key={j} style={{ display: "grid", gridTemplateColumns: "26px 1fr 1fr", gap: 8, alignItems: "center", padding: "4px 0" }}>
                 <span style={{ width: 22, height: 22, borderRadius: 6, display: "grid", placeItems: "center", fontSize: 11, fontWeight: 750, margin: "0 auto", background: H.bg2, color: H.sub }}>{j + 1}</span>
-                <span style={{ fontSize: 14, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{s.w} kg</span>
-                <span style={{ fontSize: 14, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{s.r}</span>
+                <span style={{ fontSize: 14, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: col || H.text }}>{s.w} kg</span>
+                <span style={{ fontSize: 14, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: col || H.text }}>{s.r}</span>
               </div>
-            ))}
+            ); })}
             <div style={{ display: "flex", gap: 14, marginTop: 10, paddingTop: 10, borderTop: "1px solid " + H.line }}>
               {nS("Volumen", (evol / 1000).toFixed(2) + " t")}
               {nS("Bester Satz", best ? best.w + " × " + best.r : "—")}
@@ -863,9 +885,9 @@ function SetTable({ sets, onChange, last }) {
     <div style={{ display: "grid", gridTemplateColumns: "26px 1fr 1fr 30px", gap: 8, margin: "12px 0 2px" }}>{["SATZ", "KG", "WDH", ""].map((h, i) => <span key={i} style={{ fontSize: 10, letterSpacing: 1, color: H.faint, fontWeight: 700, textAlign: i ? "left" : "center" }}>{h}</span>)}</div>
     {sets.map((s, i) => {
       const done = s.w && s.r; const lp = last && last[i];
-      // Hevy-Style: kg/Wdh grün wenn mehr als letzte Session, rot wenn weniger.
-      const cmp = (val, prev) => { if (val === "" || val == null || !lp || prev == null) return null; const n = dec(val); if (n > prev) return H.up; if (n < prev) return H.down; return null; };
-      const wCol = cmp(s.w, lp && lp.w), rCol = cmp(s.r, lp && lp.r);
+      // Satz-Trend per e1RM (Gewicht×Wdh fair verrechnet): beide Zahlen einheitlich
+      // grün, wenn der Satz insgesamt stärker war als beim letzten Mal, sonst rot.
+      const wCol = setTrend(s.w, s.r, lp), rCol = wCol;
       return (
       <div key={i} style={{ display: "grid", gridTemplateColumns: "26px 1fr 1fr 30px", gap: 8, alignItems: "center", padding: "5px 0", background: done ? H.blueSoft : "transparent", borderRadius: 8 }}>
         <span style={{ width: 24, height: 24, borderRadius: 7, display: "grid", placeItems: "center", fontSize: 12, fontWeight: 750, margin: "0 auto", background: done ? H.blue : H.bg2, color: done ? "#fff" : H.sub }}>{i + 1}</span>
