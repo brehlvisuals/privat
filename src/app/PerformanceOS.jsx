@@ -160,6 +160,10 @@ function mergeContext(d, ctxRows) {
       ...(r.steps != null ? { steps: r.steps } : {}),
       ...(r.weight_kg != null ? { weight: Number(r.weight_kg) } : {}),
       ...(r.body_fat != null ? { bodyFat: Number(r.body_fat) } : {}),
+      ...(r.sleep_score != null ? { sleepScore: r.sleep_score } : {}),
+      ...(r.sleep_deep != null ? { sleepDeep: r.sleep_deep } : {}),
+      ...(r.sleep_rem != null ? { sleepRem: r.sleep_rem } : {}),
+      ...(r.avg_hr != null ? { avgHr: r.avg_hr } : {}),
     };
   }
   return d;
@@ -225,7 +229,7 @@ async function estimateFood(text) {
   const o = JSON.parse(out.replace(/```json|```/g, "").trim());
   return { n: o.n, p: Math.round(o.p), f: Math.round(o.f), c: Math.round(o.c), k: Math.round(o.k), ai: true };
 }
-const COACH_SYS = "Du bist der KI-Coach & Datenanalyst in Felix' privatem Performance OS. Felix ist pescetarischer Ironman-Triathlet, 26, 186 cm, ~83 kg. Er trainiert Schwimmen, Rad, Laufen, Kraft, Calisthenics.\n\nWICHTIG: Im Abschnitt AKTUELLE DATEN bekommst du seinen ECHTEN, VOLLSTÄNDIGEN Verlauf: Gewichtstrend über Wochen, tägliche Health-Metriken (Aktiv-kcal, Schlaf, Ruhepuls, HRV, Gewicht) der letzten ~3 Wochen, Ernährungshistorie der letzten 14 Tage (kcal/Protein/Bilanz) und die letzten Trainings mit Sätzen/Volumen. NUTZE diese Daten aktiv für tiefe, konkrete Auswertungen — Trends, Muster, Zusammenhänge (z.B. Gewicht vs. Kalorienbilanz, Schlaf/HRV vs. Trainingsleistung, Volumen-Progression). Behaupte NIEMALS, du hättest keine Historie oder keinen Zugriff — schau IMMER zuerst in die AKTUELLE DATEN, bevor du das sagst. Wenn ein konkreter Wert wirklich fehlt (z.B. '—'), benenne genau welcher.\n\nDu kannst aktiv in der App handeln über Tools:\n- log_meal: Gegessenes ins Tagebuch eintragen — für heute ODER rückwirkend (Feld 'date', YYYY-MM-DD, z.B. gestern). Bei zusammengesetzten Mahlzeiten JEDE Zutat als EIGENEN log_meal-Aufruf (nicht zusammenfassen), je mit Menge/Einheit + eigenen Nährwerten.\n- update_meal / delete_meal: bestehende Tagebuch-Einträge ändern oder löschen — anhand der [id: ...], die im Kontext hinter jedem Eintrag steht. Damit kannst du Mengen korrigieren, Werte anpassen oder Einträge entfernen.\n- create_food: ein festes Lebensmittel dauerhaft in Felix' Bibliothek anlegen, Nährwerte pro Referenzmenge.\n- adjust_activity: Aktiv-kcal (Coros/Apple Health) manuell korrigieren, auch rückwirkend per 'date' — z.B. 'addiere 500 kcal' → mode 'add', kcal 500.\nWenn du ein Tool sinnvoll einsetzen kannst, TU es direkt, statt Ausreden zu machen. Sei ein ehrlicher, fordernder Coach: klare Einordnung, konkrete Zahlen, umsetzbare Empfehlungen. Antworte auf Deutsch in der Du-Form. Kein Ersatz für Arzt bei medizinischen Fragen.";
+const COACH_SYS = "Du bist der KI-Coach & Datenanalyst in Felix' privatem Performance OS. Felix ist pescetarischer Ironman-Triathlet, 26, 186 cm, ~83 kg. Er trainiert Schwimmen, Rad, Laufen, Kraft, Calisthenics.\n\nWICHTIG: Im Abschnitt AKTUELLE DATEN bekommst du seinen ECHTEN, VOLLSTÄNDIGEN Verlauf. Du hast Zugriff auf ALL DIESE DATEN (aus Coros & Apple Health, täglich über ~3 Wochen): Aktiv-kcal, Schritte, Schlafdauer, Schlaf-Score, Tiefschlaf- & REM-Anteil, Ruhepuls, Tages-Durchschnitts-Herzfrequenz, HRV, Gewicht und Körperfettanteil — plus den aktuellen COROS-ZUSTAND (Recovery %, VO₂max, Laufniveau, Schwellentempo, Rennprognosen 5k/10k/HM/Marathon, Trainingsbelastung mit Kurz-/Langzeit-Load & Ratio), den Gewichts-/Körperfett-Trend, die Ernährungshistorie der letzten 14 Tage (kcal/Protein/Bilanz) und alle letzten Trainings mit Sätzen/Volumen. NUTZE das aktiv für tiefe, konkrete Auswertungen — Trends, Muster, Zusammenhänge (z.B. Schlaf-Score/Tiefschlaf vs. HRV & Recovery, Trainingsbelastung vs. Ruhepuls, Gewicht/Körperfett vs. Kalorienbilanz, Volumen-Progression). Behaupte NIEMALS, du hättest keine Historie oder keinen Zugriff auf Schlaf, Herzfrequenz o.Ä. — schau IMMER zuerst in AKTUELLE DATEN. Nur wenn ein konkreter Einzelwert dort wirklich als '—' steht, benenne genau welcher (dann wurde er an dem Tag nicht gemessen).\n\nDu kannst aktiv in der App handeln über Tools:\n- log_meal: Gegessenes ins Tagebuch eintragen — für heute ODER rückwirkend (Feld 'date', YYYY-MM-DD, z.B. gestern). Bei zusammengesetzten Mahlzeiten JEDE Zutat als EIGENEN log_meal-Aufruf (nicht zusammenfassen), je mit Menge/Einheit + eigenen Nährwerten.\n- update_meal / delete_meal: bestehende Tagebuch-Einträge ändern oder löschen — anhand der [id: ...], die im Kontext hinter jedem Eintrag steht. Damit kannst du Mengen korrigieren, Werte anpassen oder Einträge entfernen.\n- create_food: ein festes Lebensmittel dauerhaft in Felix' Bibliothek anlegen, Nährwerte pro Referenzmenge.\n- adjust_activity: Aktiv-kcal (Coros/Apple Health) manuell korrigieren, auch rückwirkend per 'date' — z.B. 'addiere 500 kcal' → mode 'add', kcal 500.\nWenn du ein Tool sinnvoll einsetzen kannst, TU es direkt, statt Ausreden zu machen. Sei ein ehrlicher, fordernder Coach: klare Einordnung, konkrete Zahlen, umsetzbare Empfehlungen. Antworte auf Deutsch in der Du-Form. Kein Ersatz für Arzt bei medizinischen Fragen.";
 
 // Baut aus dem echten App-Zustand einen REICHEN Live-Kontext für den Coach:
 // Ziele, Heute-Detail, Gewichtsverlauf, Health-Metriken über Wochen,
@@ -259,8 +263,17 @@ function buildCoachContext(data) {
   if (todayEntries.length) { L.push("Einträge heute (per id änderbar/löschbar):"); L.push(todayEntries.join("\n")); }
   const yEntries = entryLines(dstr(1));
   if (yEntries.length) { L.push("Einträge gestern (" + dstr(1) + "):"); L.push(yEntries.join("\n")); }
-  if (ctx.sleep != null) L.push("Schlaf letzte Nacht: " + ctx.sleep + " h.");
-  { const hv = hrvOf(data, today); if (ctx.rhf != null || hv != null) L.push("Ruhepuls: " + num(ctx.rhf) + " bpm." + (hv != null ? " HRV: " + hv + " ms (selbst eingetragen)." : "")); }
+  if (ctx.sleep != null) L.push("Schlaf letzte Nacht: " + ctx.sleep + " h" + (ctx.sleepScore != null ? " (Score " + ctx.sleepScore + ", Tief " + num(ctx.sleepDeep) + "%, REM " + num(ctx.sleepRem) + "%)" : "") + ".");
+  { const hv = hrvOf(data, today); if (ctx.rhf != null || hv != null || ctx.avgHr != null) L.push("Ruhepuls: " + num(ctx.rhf) + " bpm." + (ctx.avgHr != null ? " Ø-Herzfrequenz: " + ctx.avgHr + " bpm." : "") + (hv != null ? " HRV: " + hv + " ms." : "")); }
+
+  // Coros-Zustand (Snapshot): Recovery, Fitness/VO₂max, Rennprognosen, Trainingsbelastung.
+  const co = data.coros || {};
+  if (co.recovery || co.fitness || co.load) {
+    L.push("\n== COROS-ZUSTAND (aktuell) ==");
+    if (co.recovery) L.push("Recovery: " + co.recovery.pct + "%" + (co.recovery.level ? " (" + co.recovery.level + ")" : "") + (co.recovery.full ? ", voll erholt in " + co.recovery.full : "") + ".");
+    if (co.fitness) { const f = co.fitness; L.push("Fitness: VO₂max " + num(f.vo2max) + ", Laufniveau " + num(f.runningLevel) + ", Schwellentempo " + num(f.threshold) + ". Rennprognosen — 5k " + num(f.pred5k) + ", 10k " + num(f.pred10k) + ", HM " + num(f.predHM) + ", Marathon " + num(f.predM) + "."); }
+    if (co.load) L.push("Trainingsbelastung: " + num(co.load.comment) + " — Kurzzeit-Load " + num(co.load.short) + ", Langzeit-Load " + num(co.load.long) + ", Ratio " + num(co.load.ratio) + ".");
+  }
 
   // Gewichtsverlauf (alle Messungen chronologisch)
   const wDates = Object.keys(data.context || {}).filter((dd) => typeof (data.context[dd] || {}).weight === "number").sort();
@@ -273,12 +286,12 @@ function buildCoachContext(data) {
   } else L.push("Noch keine Gewichtsdaten synchronisiert.");
 
   // Tages-Metriken der letzten 21 Tage
-  L.push("\n== HEALTH-METRIKEN (Aktiv-kcal / Schritte / Schlaf h / Ruhepuls / HRV / Gewicht / Körperfett %) ==");
+  L.push("\n== HEALTH-METRIKEN je Tag (Aktiv-kcal / Schritte / Schlaf h / Schlaf-Score / Tief% / REM% / Ruhepuls / Ø-Herzfrequenz / HRV / Gewicht / Körperfett %) ==");
   const dayLines = [];
   for (let i = 0; i <= 21; i++) {
     const dd = dstr(i); const c = data.context[dd]; const a = actOf(data, dd);
     if (!c && a == null) continue;
-    dayLines.push(fmtShort(dd) + ": Akt " + num(a) + ", Schritte " + num(c && c.steps) + ", Schlaf " + num(c && c.sleep) + ", RHF " + num(c && c.rhf) + ", HRV " + num(hrvOf(data, dd)) + ", Gew " + num(c && c.weight) + ", KF " + num(c && c.bodyFat));
+    dayLines.push(fmtShort(dd) + ": Akt " + num(a) + ", Schritte " + num(c && c.steps) + ", Schlaf " + num(c && c.sleep) + ", Score " + num(c && c.sleepScore) + ", Tief " + num(c && c.sleepDeep) + "%, REM " + num(c && c.sleepRem) + "%, RHF " + num(c && c.rhf) + ", ØHF " + num(c && c.avgHr) + ", HRV " + num(hrvOf(data, dd)) + ", Gew " + num(c && c.weight) + ", KF " + num(c && c.bodyFat));
   }
   L.push(dayLines.length ? dayLines.join("\n") : "keine Health-Daten");
 
@@ -1511,7 +1524,7 @@ function Home({ data, commit, reload }) {
   sumParts.push(pLeft > 0 ? "noch " + pLeft + " g Protein" : "Protein-Ziel ✓");
   if (act != null) sumParts.push(kLeft >= 0 ? kLeft + " kcal übrig" : Math.abs(kLeft) + " kcal drüber");
   const summary = sumParts.join("  ·  ");
-  const c0 = data.coros || {}; const rec = c0.recovery; const fit = c0.fitness;
+  const c0 = data.coros || {}; const rec = c0.recovery; const fit = c0.fitness; const load = c0.load;
   const expDays = c0.access_expires ? Math.floor((c0.access_expires - Date.now()) / 864e5) : null;
   const needReauth = expDays != null && expDays <= 5;
 
@@ -1561,6 +1574,11 @@ function Home({ data, commit, reload }) {
             {fit && fit.threshold && <Stat label="Schwelle" value={fit.threshold} />}
           </div>
           {rec && rec.level && <div style={{ fontSize: 12.5, color: H.sub, marginTop: 10 }}>{rec.level}{rec.full ? " · voll erholt in " + rec.full : ""}</div>}
+          {load && load.short != null && <div style={{ display: "flex", gap: 12, marginTop: 10, paddingTop: 10, borderTop: "1px solid " + H.line, flexWrap: "wrap", alignItems: "center" }}>
+            <Mini label="Belastung" v={load.comment || "—"} good={load.comment === "Optimized" ? true : null} />
+            <Mini label="Load kurz/lang" v={load.short + " / " + load.long} />
+            {load.ratio && <Mini label="Ratio" v={load.ratio} good={Number(load.ratio) >= 0.8 && Number(load.ratio) <= 1.3 ? true : Number(load.ratio) > 1.5 ? false : null} />}
+          </div>}
           {fit && (fit.pred5k || fit.predM) && (
             <div style={{ display: "flex", gap: 12, marginTop: 10, paddingTop: 10, borderTop: "1px solid " + H.line, flexWrap: "wrap" }}>
               {fit.pred5k && <Mini label="5 km" v={fit.pred5k} />}

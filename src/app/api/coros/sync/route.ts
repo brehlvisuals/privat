@@ -7,10 +7,10 @@ export const maxDuration = 60;
 
 const iso = (yyyymmdd: string) => yyyymmdd.slice(0, 4) + "-" + yyyymmdd.slice(4, 6) + "-" + yyyymmdd.slice(6, 8);
 
-type Row = { activity_kcal?: number; sleep_hours?: number; resting_hr?: number; hrv?: number; stress?: string; steps?: number };
+type Row = { activity_kcal?: number; sleep_hours?: number; resting_hr?: number; hrv?: number; stress?: string; steps?: number; sleep_score?: number; sleep_deep?: number; sleep_rem?: number; avg_hr?: number };
 
 // Parst die Text-Outputs der Coros-Tools in tagesweise Werte.
-function parseAll(hrvTxt: string, rhrTxt: string, dailyTxt: string) {
+function parseAll(hrvTxt: string, rhrTxt: string, dailyTxt: string, sleepTxt: string, hrTxt: string) {
   const days: Record<string, Row> = {};
   const get = (d: string) => (days[d] ||= {});
 
@@ -21,6 +21,14 @@ function parseAll(hrvTxt: string, rhrTxt: string, dailyTxt: string) {
   // Ruhepuls: "YYYY-MM-DD: N bpm"
   const rhrRe = /(\d{4}-\d{2}-\d{2}):\s*(\d+)\s*bpm/g;
   for (let m; (m = rhrRe.exec(rhrTxt)); ) get(m[1]).resting_hr = parseInt(m[2], 10);
+
+  // Schlafphasen: pro Aufwach-Datum Score + Tief-/REM-Anteil.
+  const sleepRe = /(\d{4}-\d{2}-\d{2})\nSleep Score:\s*(\d+)\nMain Sleep:[^\n]*\nDeep Sleep Ratio:\s*(\d+)%\nLight Sleep Ratio:\s*\d+%\nREM Ratio:\s*(\d+)%/g;
+  for (let m; (m = sleepRe.exec(sleepTxt)); ) { const r = get(m[1]); r.sleep_score = parseInt(m[2], 10); r.sleep_deep = parseInt(m[3], 10); r.sleep_rem = parseInt(m[4], 10); }
+
+  // Tages-Durchschnitts-Herzfrequenz: "YYYY-MM-DD: N bpm (Min: .., Max: ..)"
+  const hrRe = /(\d{4}-\d{2}-\d{2}):\s*(\d+)\s*bpm/g;
+  for (let m; (m = hrRe.exec(hrTxt)); ) get(m[1]).avg_hr = parseInt(m[2], 10);
 
   // Daily Health: Abschnitte "--- YYYYMMDD ---" mit Calories / Total hh h mm min / Stress Avg
   const blocks = dailyTxt.split(/---\s*(\d{8})\s*---/).slice(1);
@@ -69,10 +77,21 @@ async function run(request: Request) {
     return Response.json({ error: "coros_query_failed", detail: String(e) }, { status: 502 });
   }
 
-  const days = parseAll(hrvTxt, rhrTxt, dailyTxt);
+  // Zusätzliche Metriken (optional — dürfen den Kern-Sync nicht abbrechen):
+  // Schlafphasen (Score/Tief/REM) und Tages-Durchschnitts-Herzfrequenz.
+  let sleepTxt = "", hrTxt = "";
+  try {
+    const now = new Date();
+    const ymd = (dt: Date) => `${dt.getFullYear()}${String(dt.getMonth() + 1).padStart(2, "0")}${String(dt.getDate()).padStart(2, "0")}`;
+    const start = new Date(now); start.setDate(start.getDate() - 30);
+    sleepTxt = await corosTool(token, "querySleepData", { startDate: ymd(start), endDate: ymd(now), days: 30 });
+    hrTxt = await corosTool(token, "queryAvgHeartRate", { days: 30 });
+  } catch { /* Zusatzdaten optional */ }
+
+  const days = parseAll(hrvTxt, rhrTxt, dailyTxt, sleepTxt, hrTxt);
   const userId = process.env.HEALTH_SYNC_USER_ID!;
   const rows = Object.entries(days)
-    .filter(([, r]) => r.activity_kcal != null || r.sleep_hours != null || r.resting_hr != null || r.hrv != null || r.steps != null)
+    .filter(([, r]) => r.activity_kcal != null || r.sleep_hours != null || r.resting_hr != null || r.hrv != null || r.steps != null || r.sleep_score != null || r.avg_hr != null)
     .map(([date, r]) => ({ user_id: userId, date, source: "coros", ...r }));
 
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -105,7 +124,14 @@ async function run(request: Request) {
       const bday = g(uiTxt, /Birthday:\s*(\d{4}-\d{2}-\d{2})/i);
       profile = { birthday: bday, height: g(uiTxt, /Height:\s*([\d.]+)/i), weight: g(uiTxt, /Weight:\s*([\d.]+)/i) };
     } catch { /* profil optional */ }
-    const data = { recovery, fitness, profile, access_expires: a0?.access_expires ?? null, synced_at: Date.now() };
+    // Trainingsbelastung (neuester Tag): Kurz-/Langzeit-Load + Ratio + Bewertung.
+    let load = null;
+    try {
+      const loadTxt = await corosTool(token, "queryTrainingLoadAssessment", { days: 3 });
+      const st = g(loadTxt, /Short-Term Load:\s*(\d+)/i);
+      if (st) load = { comment: g(loadTxt, /Comment:\s*([^\n]+)/i), short: parseInt(st, 10), long: parseInt(g(loadTxt, /Long-Term Load:\s*(\d+)/i) || "0", 10), ratio: g(loadTxt, /Load Ratio:\s*([\d.]+)/i) };
+    } catch { /* Load optional */ }
+    const data = { recovery, fitness, profile, load, access_expires: a0?.access_expires ?? null, synced_at: Date.now() };
     await supabase.from("coros_snapshot").upsert({ user_id: userId, data, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
     snapshotSaved = true;
   } catch { /* Snapshot ist optional — Tagesdaten sind das Wichtige */ }
