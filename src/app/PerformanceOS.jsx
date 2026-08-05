@@ -1593,12 +1593,22 @@ function Home({ data, commit, reload }) {
       <div style={{ display: "flex", gap: 9, marginBottom: 9 }}>
         <Stat label="Aktiv-kcal" value={dash(act)} accent onClick={() => setHist({ title: "Aktiv-Kalorien", unit: " kcal", points: actPts(), fmt: int0 })} />
         <Stat label="Schritte" value={ctx.steps != null ? ctx.steps.toLocaleString("de-DE") : "—"} onClick={() => setHist({ title: "Schritte", unit: "", points: ptsOf("steps"), fmt: int0 })} />
-        <Stat label="Schlaf" value={ctx.sleep != null ? de(ctx.sleep) + " h" : "—"} onClick={() => setHist({ title: "Schlaf", unit: " h", points: ptsOf("sleep"), fmt: de1 })} />
+        <Stat label="Schlaf" value={ctx.sleep != null ? de(ctx.sleep) + " h" : "—"} onClick={() => setHist({ title: "Schlaf (Stunden)", unit: " h", points: ptsOf("sleep"), fmt: de1 })} />
+      </div>
+      <div style={{ display: "flex", gap: 9, marginBottom: 9 }}>
+        <Stat label="Schlaf-Score" value={dash(ctx.sleepScore)} onClick={() => setHist({ title: "Schlaf-Score", unit: "", points: ptsOf("sleepScore"), fmt: int0 })} />
+        <Stat label="Tiefschlaf" value={ctx.sleepDeep != null ? ctx.sleepDeep + " %" : "—"} onClick={() => setHist({ title: "Tiefschlaf-Anteil", unit: " %", points: ptsOf("sleepDeep"), fmt: int0 })} />
+        <Stat label="REM" value={ctx.sleepRem != null ? ctx.sleepRem + " %" : "—"} onClick={() => setHist({ title: "REM-Anteil", unit: " %", points: ptsOf("sleepRem"), fmt: int0 })} />
+      </div>
+      <div style={{ display: "flex", gap: 9, marginBottom: 9 }}>
+        <Stat label="Ruhepuls" value={dash(ctx.rhf)} onClick={() => setHist({ title: "Ruhepuls", unit: " bpm", points: ptsOf("rhf"), fmt: int0 })} />
+        <Stat label="Ø Herzfr." value={dash(ctx.avgHr)} onClick={() => setHist({ title: "Ø-Herzfrequenz", unit: " bpm", points: ptsOf("avgHr"), fmt: int0 })} />
+        <Stat label="HRV" value={hrvOf(data, today) != null ? hrvOf(data, today) + " ms" : "—"} onClick={() => setHist({ title: "HRV", unit: " ms", points: ptsOf("hrv"), fmt: int0 })} />
       </div>
       <div style={{ display: "flex", gap: 9, marginBottom: 14 }}>
-        <Stat label="Ruhepuls" value={dash(ctx.rhf)} onClick={() => setHist({ title: "Ruhepuls", unit: " bpm", points: ptsOf("rhf"), fmt: int0 })} />
         <Stat label="Gewicht" value={ctx.weight != null ? de(ctx.weight) + " kg" : "—"} onClick={() => setHist({ title: "Gewicht", unit: " kg", points: ptsOf("weight"), fmt: de1 })} />
         <Stat label="Körperfett" value={ctx.bodyFat != null ? de1(ctx.bodyFat) + " %" : "—"} onClick={() => setHist({ title: "Körperfett", unit: " %", points: ptsOf("bodyFat"), fmt: de1 })} />
+        <div style={{ flex: 1 }} />
       </div>
 
       <Card style={{ marginBottom: 14 }}>
