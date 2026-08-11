@@ -45,7 +45,12 @@ const setTrend = (w, r, prevSets) => {
   if (!prev) return null;
   const cur = e1rm(dec(w), dec(r)), ref = e1rm(dec(prev.w), dec(prev.r));
   if (!cur || !ref) return null;
-  return cur > ref ? H.up : cur < ref ? H.down : null;
+  // Toleranzband ±2 %: praktisch gleichwertige Sätze bleiben neutral (weiß),
+  // statt bei einem Pünktchen Unterschied hart rot/grün zu werden.
+  const diff = (cur - ref) / ref;
+  if (diff > 0.02) return H.up;
+  if (diff < -0.02) return H.down;
+  return null;
 };
 const dstr = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
 const today = dstr(0);
