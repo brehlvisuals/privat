@@ -21,12 +21,9 @@ const H = {
 /* ---------- helpers ---------- */
 const e1rm = (w, r) => Math.round(w * (1 + r / 30));
 const bestSet = (s) => s.reduce((b, x) => (e1rm(x.w, x.r) > e1rm(b.w, b.r) ? x : b), s[0]);
-// e1RM mit gedeckelten Wdh: die Schätzformel (Epley) ist nur bis ~12 Wdh
-// zuverlässig, darüber überschätzt sie das 1RM stark. Deshalb Wdh kappen.
-const e1rmC = (w, r) => e1rm(w, Math.min(r, 12));
 // Bester passender Vorsatz: nächstliegendes Gewicht (Gleiches mit Gleichem),
-// bei Gleichstand der stärkere Satz. So verliert ein schwerer Arbeitssatz nicht
-// gegen einen lockeren High-Rep-/Aufwärmsatz der letzten Session.
+// bei Gleichstand der stärkere Satz. So wird ein Satz mit dem vergleichbaren
+// Vorsatz gepaart statt gegen einen lockeren Aufwärm-/High-Rep-Satz.
 const matchPrev = (w, prevSets) => {
   const list = (prevSets || []).filter((p) => p && p.w != null && p.r != null);
   if (!list.length) return null;
@@ -34,17 +31,19 @@ const matchPrev = (w, prevSets) => {
   return list.reduce((best, p) => {
     const dp = Math.abs(dec(p.w) - cw), db = Math.abs(dec(best.w) - cw);
     if (dp < db) return p;
-    if (dp === db && e1rmC(dec(p.w), dec(p.r)) > e1rmC(dec(best.w), dec(best.r))) return p;
+    if (dp === db && e1rm(dec(p.w), dec(p.r)) > e1rm(dec(best.w), dec(best.r))) return p;
     return best;
   });
 };
-// Leistungs-Trend eines Satzes ggü. der letzten Session (Array prevSets):
-// per e1RM gegen den bestpassenden Vorsatz. Grün = stärker, Rot = schwächer.
+// Leistungs-Trend eines Satzes ggü. der letzten Session (Array prevSets): per
+// e1RM (Gewicht×Wdh) gegen den bestpassenden Vorsatz. Grün = stärker, Rot =
+// schwächer. Kein Wdh-Deckel — sonst könnten hohe-Wdh-Sätze bei gleichem
+// Gewicht nie „grün" werden (blieben rot, egal wie viele Wdh man einträgt).
 const setTrend = (w, r, prevSets) => {
   if (w === "" || w == null || r === "" || r == null) return null;
   const prev = matchPrev(w, prevSets);
   if (!prev) return null;
-  const cur = e1rmC(dec(w), dec(r)), ref = e1rmC(dec(prev.w), dec(prev.r));
+  const cur = e1rm(dec(w), dec(r)), ref = e1rm(dec(prev.w), dec(prev.r));
   if (!cur || !ref) return null;
   return cur > ref ? H.up : cur < ref ? H.down : null;
 };
