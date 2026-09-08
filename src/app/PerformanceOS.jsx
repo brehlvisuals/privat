@@ -425,6 +425,14 @@ export default function App() {
   const [msgs, setMsgs] = useState([{ role: "assistant", content: "Moin Felix! Frag mich was zu Training, Ernährung oder Recovery — oder schick mir, was du isst (z.B. Döner mit allem) für eine schnelle Schätzung." }]);
   useEffect(() => { load().then(setData); }, []);
   useEffect(() => { const t = setTimeout(() => setSplash(false), 1650); return () => clearTimeout(t); }, []);
+  // Laufendes Training lokal sichern, damit ein versehentliches App-Schließen es
+  // nicht verliert — beim Start wiederherstellen, bei jeder Änderung speichern.
+  const activeLoaded = useRef(false);
+  useEffect(() => { try { const s = localStorage.getItem("perfos_active"); if (s) setActive(JSON.parse(s)); } catch (e) {} }, []);
+  useEffect(() => {
+    if (!activeLoaded.current) { activeLoaded.current = true; return; } // Mount-Lauf überspringen (nichts überschreiben)
+    try { if (active) localStorage.setItem("perfos_active", JSON.stringify(active)); else localStorage.removeItem("perfos_active"); } catch (e) {}
+  }, [active]);
   if (!data) return <div style={{ background: H.bg, minHeight: "100dvh" }}>{splash && <Splash />}</div>;
   const commit = (d) => { setData(d); persist(d); };
   const reload = () => load().then(setData);
@@ -1499,11 +1507,18 @@ function SyncButton({ reload }) {
   const go = async () => {
     if (busy) return; setBusy(true); setMsg("");
     try {
-      const r = await fetch("/api/coros/sync", { method: "POST" }).then((x) => x.json());
-      if (r && r.ok) { setMsg("Aktualisiert ✓"); if (reload) await reload(); }
-      else setMsg(r && r.error === "coros_not_connected" ? "Coros neu verbinden" : "Sync fehlgeschlagen");
-    } catch (e) { setMsg("Sync fehlgeschlagen"); }
-    setBusy(false); setTimeout(() => setMsg(""), 3500);
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 90000); // nicht ewig hängen
+      const res = await fetch("/api/coros/sync", { method: "POST", credentials: "same-origin", signal: ctrl.signal });
+      clearTimeout(t);
+      let r = null; try { r = await res.json(); } catch (e) { /* keine JSON-Antwort (z.B. Timeout-Seite) */ }
+      if (res.ok && r && r.ok) { setMsg("Aktualisiert ✓"); if (reload) await reload(); }
+      else if (r && r.error === "coros_not_connected") setMsg("Coros neu verbinden");
+      else setMsg("Fehlgeschlagen (" + (res.status !== 200 ? "HTTP " + res.status : (r && r.error) || "?") + ")");
+    } catch (e) {
+      setMsg(e && e.name === "AbortError" ? "Timeout – nochmal versuchen" : "Netzwerkfehler – nochmal versuchen");
+    }
+    setBusy(false); setTimeout(() => setMsg(""), 5000);
   };
   return (
     <button onClick={go} disabled={busy} className="press" style={{ width: "100%", marginBottom: 14, padding: 12, borderRadius: 13, border: "1px solid " + H.glassLine, background: H.glass, color: H.text, fontWeight: 700, fontSize: 13.5, cursor: busy ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
