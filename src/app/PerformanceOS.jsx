@@ -39,17 +39,21 @@ const matchPrev = (w, prevSets) => {
 // e1RM (Gewicht×Wdh) gegen den bestpassenden Vorsatz. Grün = stärker, Rot =
 // schwächer. Kein Wdh-Deckel — sonst könnten hohe-Wdh-Sätze bei gleichem
 // Gewicht nie „grün" werden (blieben rot, egal wie viele Wdh man einträgt).
-const setTrend = (w, r, prevSets) => {
+// later = wie viele Positionen SPÄTER die Übung heute im Workout steht als beim
+// Vergleich. Später = vorermüdet → ein leichter Rückgang wird nicht rot gewertet.
+const setTrend = (w, r, prevSets, later = 0) => {
   if (w === "" || w == null || r === "" || r == null) return null;
   const prev = matchPrev(w, prevSets);
   if (!prev) return null;
   const cur = e1rm(dec(w), dec(r)), ref = e1rm(dec(prev.w), dec(prev.r));
   if (!cur || !ref) return null;
-  // Toleranzband ±2 %: praktisch gleichwertige Sätze bleiben neutral (weiß),
-  // statt bei einem Pünktchen Unterschied hart rot/grün zu werden.
+  // Toleranzband ±2 %: praktisch gleichwertige Sätze bleiben neutral (weiß).
+  // Steigerung (grün) zählt immer. Bei späterer Position wird die Rot-Schwelle
+  // gelockert (~3 % je Platz, max 12 %), damit Vorermüdung nicht unfair rot macht.
   const diff = (cur - ref) / ref;
   if (diff > 0.02) return H.up;
-  if (diff < -0.02) return H.down;
+  const negTh = Math.min(0.02 + Math.max(0, later) * 0.03, 0.12);
+  if (diff < -negTh) return H.down;
   return null;
 };
 const dstr = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
@@ -774,13 +778,15 @@ function WorkoutDetail({ w, data, back, onDelete, onSave }) {
   const src = editing ? draft : w;
   // Sätze derselben Übung aus dem letzten Workout VOR diesem (für Farb-Vergleich).
   const prevSetsFor = (ex) => {
+    const match = (e) => (ex.exId && e.exId === ex.exId) || e.name === ex.name;
     const past = (data && data.workouts || [])
-      .filter((x) => x.id !== w.id && x.date <= w.date && x.exercises.some((e) => (ex.exId && e.exId === ex.exId) || e.name === ex.name))
+      .filter((x) => x.id !== w.id && x.date <= w.date && x.exercises.some(match))
       .sort((a, b) => (a.date < b.date ? -1 : 1));
     if (!past.length) return null;
     const p = past[past.length - 1];
-    const e = p.exercises.find((e) => (ex.exId && e.exId === ex.exId) || e.name === ex.name);
-    return e && e.sets.length ? e.sets : null;
+    const idx = p.exercises.findIndex(match);
+    const e = p.exercises[idx];
+    return e && e.sets.length ? { sets: e.sets, prevPos: idx } : null;
   };
   const totalSets = src.exercises.reduce((a, e) => a + e.sets.length, 0);
   const vol = src.exercises.reduce((a, e) => a + e.sets.reduce((s, x) => s + dec(x.w) * dec(x.r), 0), 0);
@@ -825,14 +831,17 @@ function WorkoutDetail({ w, data, back, onDelete, onSave }) {
         const evol = e.sets.reduce((s, x) => s + x.w * x.r, 0);
         const best = e.sets.length ? bestSet(e.sets) : null;
         const top = best ? e1rm(best.w, best.r) : 0;
-        const prevSets = editing ? null : prevSetsFor(e);
+        const prevInfo = editing ? null : prevSetsFor(e);
+        const prevSets = prevInfo ? prevInfo.sets : null;
+        const later = prevInfo && prevInfo.prevPos != null ? i - prevInfo.prevPos : 0;
         return (
           <Card key={i} style={{ marginBottom: 9 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 15, fontWeight: 720, color: H.blue }}>{e.name}</span><span style={{ fontSize: 12, color: H.sub }}>{e.sets.length} Sätze</span></div>
             {e.gym && <div style={{ fontSize: 11.5, color: H.faint, marginTop: 1 }}><MapPin size={10} style={{ verticalAlign: "-1px" }} /> {e.gym}</div>}
+            {later !== 0 && <div style={{ fontSize: 11, color: later > 0 ? H.amber : H.sub, marginTop: 4, fontWeight: 600 }}>Reihenfolge: #{prevInfo.prevPos + 1} → #{i + 1}{later > 0 ? " · war später — vorermüdet, milder gewertet" : " · war früher"}</div>}
             <div style={{ display: "grid", gridTemplateColumns: "26px 1fr 1fr", gap: 8, margin: "10px 0 2px" }}>{["#", "KG", "WDH"].map((h, j) => <span key={j} style={{ fontSize: 10, letterSpacing: 1, color: H.faint, fontWeight: 700, textAlign: j ? "left" : "center" }}>{h}</span>)}</div>
             {e.sets.map((s, j) => {
-              const col = setTrend(s.w, s.r, prevSets);
+              const col = setTrend(s.w, s.r, prevSets, later);
               return (
               <div key={j} style={{ display: "grid", gridTemplateColumns: "26px 1fr 1fr", gap: 8, alignItems: "center", padding: "4px 0" }}>
                 <span style={{ width: 22, height: 22, borderRadius: 6, display: "grid", placeItems: "center", fontSize: 11, fontWeight: 750, margin: "0 auto", background: H.bg2, color: H.sub }}>{j + 1}</span>
@@ -892,12 +901,15 @@ function ActiveWorkout({ active, setActive, openPicker, finish, data }) {
   useEffect(() => { const t = setInterval(() => setEl(Math.round((Date.now() - active.startedAt) / 1000)), 1000); return () => clearInterval(t); }, [active.startedAt]);
   const mm = String(Math.floor(el / 60)).padStart(2, "0"), ss = String(el % 60).padStart(2, "0");
   // Letzte Session dieser Übung (nach exId, sonst Name) für „letztes Mal"-Anzeige.
+  // prevPos = an welcher Position (0-basiert) die Übung damals im Workout stand.
   const lastSets = (ex) => {
-    const past = (data.workouts || []).filter((w) => w.exercises.some((e) => (ex.exId && e.exId === ex.exId) || e.name === ex.name));
+    const match = (e) => (ex.exId && e.exId === ex.exId) || e.name === ex.name;
+    const past = (data.workouts || []).filter((w) => w.exercises.some(match));
     if (!past.length) return null;
     const w = past[past.length - 1];
-    const e = w.exercises.find((e) => (ex.exId && e.exId === ex.exId) || e.name === ex.name);
-    return e && e.sets.length ? { date: w.date, sets: e.sets } : null;
+    const idx = w.exercises.findIndex(match);
+    const e = w.exercises[idx];
+    return e && e.sets.length ? { date: w.date, sets: e.sets, prevPos: idx } : null;
   };
   return (
     <>
@@ -909,14 +921,15 @@ function ActiveWorkout({ active, setActive, openPicker, finish, data }) {
         style={{ width: "100%", marginBottom: 12, padding: "13px 14px", borderRadius: 13, border: "1px solid transparent", background: H.bg2, color: H.text, fontSize: 16, fontWeight: 700, boxSizing: "border-box", outline: "none" }} />
       <RestTimer />
       {active.exercises.length === 0 && <div style={{ color: H.faint, fontSize: 14, textAlign: "center", padding: "30px 0" }}>Noch keine Übung. Füg unten welche hinzu.</div>}
-      {active.exercises.map((ex, i) => { const last = lastSets(ex); return (
+      {active.exercises.map((ex, i) => { const last = lastSets(ex); const later = last && last.prevPos != null ? i - last.prevPos : 0; return (
         <Card key={i} style={{ marginBottom: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div><div style={{ fontSize: 17, fontWeight: 720, color: H.blue }}>{ex.name}</div>{ex.gym && <div style={{ fontSize: 11.5, color: H.faint, marginTop: 1 }}><MapPin size={10} style={{ verticalAlign: "-1px" }} /> {ex.gym}</div>}</div>
             <button onClick={() => rmEx(i)} className="press" style={{ all: "unset", cursor: "pointer", color: H.faint, fontSize: 18 }}>×</button>
           </div>
           {last && <div style={{ fontSize: 11.5, color: H.faint, marginTop: 6, background: H.bg2, borderRadius: 9, padding: "7px 10px" }}>Letztes Mal ({fmtShort(last.date)}): {last.sets.map((x) => x.w + "×" + x.r).join("  ·  ")}</div>}
-          <SetTable sets={ex.sets} onChange={(sets) => updEx(i, (e) => ({ ...e, sets }))} last={last ? last.sets : null} />
+          {last && later !== 0 && <div style={{ fontSize: 11, color: later > 0 ? H.amber : H.sub, marginTop: 5, fontWeight: 600 }}>Reihenfolge: #{last.prevPos + 1} → #{i + 1}{later > 0 ? " · heute später — vorermüdet, Wertung milder" : " · heute früher"}</div>}
+          <SetTable sets={ex.sets} onChange={(sets) => updEx(i, (e) => ({ ...e, sets }))} last={last ? last.sets : null} later={later} />
           <input value={ex.note} onChange={(e) => updEx(i, (x) => ({ ...x, note: e.target.value }))} placeholder="Notiz …" className="fld" style={{ width: "100%", marginTop: 9, padding: "10px 12px", borderRadius: 11, border: "1px solid transparent", background: H.bg2, color: H.text, fontSize: 13, boxSizing: "border-box", outline: "none" }} />
         </Card>
       ); })}
@@ -924,15 +937,15 @@ function ActiveWorkout({ active, setActive, openPicker, finish, data }) {
     </>
   );
 }
-function SetTable({ sets, onChange, last }) {
+function SetTable({ sets, onChange, last, later = 0 }) {
   const add = () => onChange([...sets, { w: "", r: "" }]); const upd = (i, k, v) => onChange(sets.map((s, j) => (j === i ? { ...s, [k]: v } : s))); const del = (i) => onChange(sets.filter((_, j) => j !== i));
   return (<>
     <div style={{ display: "grid", gridTemplateColumns: "26px 1fr 1fr 30px", gap: 8, margin: "12px 0 2px" }}>{["SATZ", "KG", "WDH", ""].map((h, i) => <span key={i} style={{ fontSize: 10, letterSpacing: 1, color: H.faint, fontWeight: 700, textAlign: i ? "left" : "center" }}>{h}</span>)}</div>
     {sets.map((s, i) => {
       const done = s.w && s.r; const lp = last && last[i];
-      // Satz-Trend per e1RM gegen den bestpassenden Satz der letzten Session:
-      // beide Zahlen einheitlich grün, wenn stärker als vergleichbar, sonst rot.
-      const wCol = setTrend(s.w, s.r, last), rCol = wCol;
+      // Satz-Trend per e1RM gegen den bestpassenden Satz der letzten Session,
+      // mit Reihenfolge (later): heute später → mildere Wertung.
+      const wCol = setTrend(s.w, s.r, last, later), rCol = wCol;
       return (
       <div key={i} style={{ display: "grid", gridTemplateColumns: "26px 1fr 1fr 30px", gap: 8, alignItems: "center", padding: "5px 0", background: done ? H.blueSoft : "transparent", borderRadius: 8 }}>
         <span style={{ width: 24, height: 24, borderRadius: 7, display: "grid", placeItems: "center", fontSize: 12, fontWeight: 750, margin: "0 auto", background: done ? H.blue : H.bg2, color: done ? "#fff" : H.sub }}>{i + 1}</span>
