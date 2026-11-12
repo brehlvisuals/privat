@@ -6,7 +6,7 @@ import {
   Flame, Dumbbell, Utensils, BarChart3, Plus, X, ChevronLeft, ChevronRight,
   Sparkles, MapPin, Search, Trophy, Watch, Activity, Scale, CheckCircle2,
   AlertTriangle, Zap, Clock, Settings, ClipboardList, Send, MessageCircle,
-  Camera, Mic, Pencil, HeartPulse, RefreshCw
+  Camera, Mic, Pencil, HeartPulse, RefreshCw, Trash2
 } from "lucide-react";
 
 const H = {
@@ -39,12 +39,30 @@ const matchPrev = (w, prevSets) => {
 // e1RM (Gewicht×Wdh) gegen den bestpassenden Vorsatz. Grün = stärker, Rot =
 // schwächer. Kein Wdh-Deckel — sonst könnten hohe-Wdh-Sätze bei gleichem
 // Gewicht nie „grün" werden (blieben rot, egal wie viele Wdh man einträgt).
-// later = wie viele Positionen SPÄTER die Übung heute im Workout steht als beim
-// Vergleich. Später = vorermüdet → ein leichter Rückgang wird nicht rot gewertet.
-const setTrend = (w, r, prevSets, later = 0) => {
+// Referenz-Sätze: alle bisherigen Sätze einer Übung über ALLE Trainings (All-Time),
+// je mit pos (Position der Übung im damaligen Workout) und date. `until` filtert
+// optional, welche Workouts zählen (z.B. nur die vor einem abgeschlossenen Training).
+const exHistory = (workouts, ex, until) => {
+  const match = (e) => (ex.exId && e.exId === ex.exId) || e.name === ex.name;
+  const out = [];
+  (workouts || []).forEach((wk) => {
+    if (until && !until(wk)) return;
+    wk.exercises.forEach((e, pos) => { if (match(e)) for (const s of e.sets) if (dec(s.w) && dec(s.r)) out.push({ w: dec(s.w), r: dec(s.r), pos, date: wk.date }); });
+  });
+  return out;
+};
+// All-Time-High = Satz mit dem höchsten e1RM.
+const athOf = (sets) => (sets || []).reduce((b, s) => (!b || e1rm(s.w, s.r) > e1rm(b.w, b.r) ? s : b), null);
+
+// Vergleich gegen den All-Time-Bestwert bei vergleichbarem Gewicht (matchPrev über
+// alle bisherigen Sätze → bei gleichem Gewicht gewinnt der stärkste je erreichte).
+// curPos = Position der Übung im aktuellen Workout; steht sie heute SPÄTER als beim
+// Referenz-Satz, ist man vorermüdet → ein leichter Rückgang wird nicht rot.
+const setTrend = (w, r, prevSets, curPos) => {
   if (w === "" || w == null || r === "" || r == null) return null;
   const prev = matchPrev(w, prevSets);
   if (!prev) return null;
+  const later = curPos != null && prev.pos != null ? curPos - prev.pos : 0;
   const cur = e1rm(dec(w), dec(r)), ref = e1rm(dec(prev.w), dec(prev.r));
   if (!cur || !ref) return null;
   // Toleranzband ±2 %: praktisch gleichwertige Sätze bleiben neutral (weiß).
@@ -679,6 +697,19 @@ function Training({ data, commit, active, setActive }) {
   const [detailW, setDetailW] = useState(null);
   const [picker, setPicker] = useState(false);
   const sessForEx = (id) => data.workouts.flatMap((w) => w.exercises.filter((e) => e.exId === id).map((e) => ({ date: w.date, sets: e.sets, note: e.note }))).sort((a, b) => a.date.localeCompare(b.date));
+  // Übung bearbeiten: Bibliothek UND alle bisherigen Trainings mitziehen (Name/Gym),
+  // damit Verlauf, Bestwerte & Listen nach dem Umbenennen konsistent bleiben.
+  const renameEx = (id, patch) => {
+    const old = data.exercises.find((x) => x.id === id);
+    const hit = (e) => e.exId === id || (!e.exId && old && e.name === old.name);
+    const wPatch = {}; if (patch.name) wPatch.name = patch.name; if (patch.gym !== undefined) wPatch.gym = patch.gym;
+    commit({ ...data,
+      exercises: data.exercises.map((x) => (x.id === id ? { ...x, ...patch } : x)),
+      workouts: data.workouts.map((w) => (w.exercises.some(hit) ? { ...w, exercises: w.exercises.map((e) => (hit(e) ? { ...e, ...wPatch, exId: id } : e)) } : w)),
+    });
+  };
+  // Übung löschen: nur aus der Bibliothek — geloggte Trainings bleiben erhalten.
+  const deleteEx = (id) => commit({ ...data, exercises: data.exercises.filter((x) => x.id !== id) });
 
   // Scroll-Position der Liste merken: beim Öffnen eines Details sichern, bei
   // Rückkehr wiederherstellen; beim Wechsel des Segments zurück nach oben.
@@ -693,7 +724,7 @@ function Training({ data, commit, active, setActive }) {
     }
   }, [mode]);
 
-  if (mode === "detail" && detailEx) return <Detail ex={detailEx} sess={sessForEx(detailEx.id)} context={data.context} back={() => setMode("library")} onSave={(patch) => { const ne = { ...detailEx, ...patch }; setDetailEx(ne); commit({ ...data, exercises: data.exercises.map((x) => (x.id === ne.id ? { ...x, ...patch } : x)) }); }} />;
+  if (mode === "detail" && detailEx) return <Detail ex={detailEx} sess={sessForEx(detailEx.id)} context={data.context} back={() => setMode("library")} onSave={(patch) => { setDetailEx({ ...detailEx, ...patch }); renameEx(detailEx.id, patch); }} onDelete={() => { deleteEx(detailEx.id); setMode("library"); }} />;
   if (mode === "wdetail" && detailW) { const w = data.workouts.find((x) => x.id === detailW) || null; if (!w) { setMode("workout"); return null; } return <WorkoutDetail w={w} data={data} back={() => setMode("workout")} onSave={(nw) => commit({ ...data, workouts: data.workouts.map((x) => (x.id === nw.id ? nw : x)) })} onDelete={() => { commit({ ...data, workouts: data.workouts.filter((x) => x.id !== w.id) }); setMode("workout"); }} />; }
 
   const startWorkout = () => setActive({ name: "", startedAt: Date.now(), exercises: [] });
@@ -740,7 +771,7 @@ function Training({ data, commit, active, setActive }) {
             })()}
           </>
         ) : mode === "records" ? <Records data={data} />
-        : <Library data={data} open={(ex) => openDetail(() => { setDetailEx(ex); setMode("detail"); })} createEx={createEx} del={(ex) => commit({ ...data, exercises: data.exercises.filter((x) => x.id !== ex.id) })} editEx={(id, patch) => commit({ ...data, exercises: data.exercises.map((x) => (x.id === id ? { ...x, ...patch } : x)) })} />}
+        : <Library data={data} open={(ex) => openDetail(() => { setDetailEx(ex); setMode("detail"); })} createEx={createEx} del={(ex) => deleteEx(ex.id)} editEx={renameEx} />}
       {picker && <ExercisePicker data={data} onPick={addEx} onCreate={(ex) => addEx(createEx(ex))} close={() => setPicker(false)} />}
     </Page>
   );
@@ -777,17 +808,12 @@ function WorkoutDetail({ w, data, back, onDelete, onSave }) {
   const [draft, setDraft] = useState(w);
   const src = editing ? draft : w;
   // Sätze derselben Übung aus dem letzten Workout VOR diesem (für Farb-Vergleich).
-  const prevSetsFor = (ex) => {
-    const match = (e) => (ex.exId && e.exId === ex.exId) || e.name === ex.name;
-    const past = (data && data.workouts || [])
-      .filter((x) => x.id !== w.id && x.date <= w.date && x.exercises.some(match))
-      .sort((a, b) => (a.date < b.date ? -1 : 1));
-    if (!past.length) return null;
-    const p = past[past.length - 1];
-    const idx = p.exercises.findIndex(match);
-    const e = p.exercises[idx];
-    return e && e.sets.length ? { sets: e.sets, prevPos: idx } : null;
-  };
+  // Referenz: alle Sätze dieser Übung aus Trainings VOR diesem (All-Time-Stand von
+  // damals) — so zeigt grün, ob ein Satz zu dem Zeitpunkt ein neuer Bestwert war.
+  const allW = (data && data.workouts) || [];
+  const wIdx = allW.findIndex((x) => x.id === w.id);
+  const before = (x) => x.id !== w.id && (x.date < w.date || (x.date === w.date && allW.indexOf(x) < wIdx));
+  const prevSetsFor = (ex) => { const h = exHistory(allW, ex, before); return h.length ? h : null; };
   const totalSets = src.exercises.reduce((a, e) => a + e.sets.length, 0);
   const vol = src.exercises.reduce((a, e) => a + e.sets.reduce((s, x) => s + dec(x.w) * dec(x.r), 0), 0);
   const totalReps = src.exercises.reduce((a, e) => a + e.sets.reduce((s, x) => s + dec(x.r), 0), 0);
@@ -831,17 +857,18 @@ function WorkoutDetail({ w, data, back, onDelete, onSave }) {
         const evol = e.sets.reduce((s, x) => s + x.w * x.r, 0);
         const best = e.sets.length ? bestSet(e.sets) : null;
         const top = best ? e1rm(best.w, best.r) : 0;
-        const prevInfo = editing ? null : prevSetsFor(e);
-        const prevSets = prevInfo ? prevInfo.sets : null;
-        const later = prevInfo && prevInfo.prevPos != null ? i - prevInfo.prevPos : 0;
+        const prevSets = editing ? null : prevSetsFor(e);
+        const ath = athOf(prevSets);
+        const later = ath ? i - ath.pos : 0;
         return (
           <Card key={i} style={{ marginBottom: 9 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 15, fontWeight: 720, color: H.blue }}>{e.name}</span><span style={{ fontSize: 12, color: H.sub }}>{e.sets.length} Sätze</span></div>
             {e.gym && <div style={{ fontSize: 11.5, color: H.faint, marginTop: 1 }}><MapPin size={10} style={{ verticalAlign: "-1px" }} /> {e.gym}</div>}
-            {later !== 0 && <div style={{ fontSize: 11, color: later > 0 ? H.amber : H.sub, marginTop: 4, fontWeight: 600 }}>Reihenfolge: #{prevInfo.prevPos + 1} → #{i + 1}{later > 0 ? " · war später — vorermüdet, milder gewertet" : " · war früher"}</div>}
+            {ath && <div style={{ fontSize: 11.5, color: H.sub, marginTop: 4 }}>🏆 Bestwert davor: <b style={{ color: H.text }}>{de(ath.w)}×{ath.r}</b> · e1RM {e1rm(ath.w, ath.r)} kg</div>}
+            {ath && later !== 0 && <div style={{ fontSize: 11, color: later > 0 ? H.amber : H.sub, marginTop: 3, fontWeight: 600 }}>Reihenfolge: Bestwert war Übung #{ath.pos + 1}, hier #{i + 1}{later > 0 ? " · vorermüdet, milder gewertet" : ""}</div>}
             <div style={{ display: "grid", gridTemplateColumns: "26px 1fr 1fr", gap: 8, margin: "10px 0 2px" }}>{["#", "KG", "WDH"].map((h, j) => <span key={j} style={{ fontSize: 10, letterSpacing: 1, color: H.faint, fontWeight: 700, textAlign: j ? "left" : "center" }}>{h}</span>)}</div>
             {e.sets.map((s, j) => {
-              const col = setTrend(s.w, s.r, prevSets, later);
+              const col = setTrend(s.w, s.r, prevSets, i);
               return (
               <div key={j} style={{ display: "grid", gridTemplateColumns: "26px 1fr 1fr", gap: 8, alignItems: "center", padding: "4px 0" }}>
                 <span style={{ width: 22, height: 22, borderRadius: 6, display: "grid", placeItems: "center", fontSize: 11, fontWeight: 750, margin: "0 auto", background: H.bg2, color: H.sub }}>{j + 1}</span>
@@ -921,15 +948,16 @@ function ActiveWorkout({ active, setActive, openPicker, finish, data }) {
         style={{ width: "100%", marginBottom: 12, padding: "13px 14px", borderRadius: 13, border: "1px solid transparent", background: H.bg2, color: H.text, fontSize: 16, fontWeight: 700, boxSizing: "border-box", outline: "none" }} />
       <RestTimer />
       {active.exercises.length === 0 && <div style={{ color: H.faint, fontSize: 14, textAlign: "center", padding: "30px 0" }}>Noch keine Übung. Füg unten welche hinzu.</div>}
-      {active.exercises.map((ex, i) => { const last = lastSets(ex); const later = last && last.prevPos != null ? i - last.prevPos : 0; return (
+      {active.exercises.map((ex, i) => { const last = lastSets(ex); const hist = exHistory(data.workouts, ex); const ath = athOf(hist); const later = ath ? i - ath.pos : 0; return (
         <Card key={i} style={{ marginBottom: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div><div style={{ fontSize: 17, fontWeight: 720, color: H.blue }}>{ex.name}</div>{ex.gym && <div style={{ fontSize: 11.5, color: H.faint, marginTop: 1 }}><MapPin size={10} style={{ verticalAlign: "-1px" }} /> {ex.gym}</div>}</div>
             <button onClick={() => rmEx(i)} className="press" style={{ all: "unset", cursor: "pointer", color: H.faint, fontSize: 18 }}>×</button>
           </div>
-          {last && <div style={{ fontSize: 11.5, color: H.faint, marginTop: 6, background: H.bg2, borderRadius: 9, padding: "7px 10px" }}>Letztes Mal ({fmtShort(last.date)}): {last.sets.map((x) => x.w + "×" + x.r).join("  ·  ")}</div>}
-          {last && later !== 0 && <div style={{ fontSize: 11, color: later > 0 ? H.amber : H.sub, marginTop: 5, fontWeight: 600 }}>Reihenfolge: #{last.prevPos + 1} → #{i + 1}{later > 0 ? " · heute später — vorermüdet, Wertung milder" : " · heute früher"}</div>}
-          <SetTable sets={ex.sets} onChange={(sets) => updEx(i, (e) => ({ ...e, sets }))} last={last ? last.sets : null} later={later} />
+          {ath && <div style={{ fontSize: 12, color: H.text, marginTop: 6, background: "rgba(52,224,161,.08)", border: "1px solid rgba(52,224,161,.22)", borderRadius: 9, padding: "7px 10px" }}>🏆 Bestwert: <b>{de(ath.w)}×{ath.r}</b> <span style={{ color: H.sub }}>· e1RM {e1rm(ath.w, ath.r)} kg · {fmtShort(ath.date)}</span></div>}
+          {last && <div style={{ fontSize: 11.5, color: H.faint, marginTop: 5, background: H.bg2, borderRadius: 9, padding: "7px 10px" }}>Letztes Mal ({fmtShort(last.date)}): {last.sets.map((x) => x.w + "×" + x.r).join("  ·  ")}</div>}
+          {ath && later !== 0 && <div style={{ fontSize: 11, color: later > 0 ? H.amber : H.sub, marginTop: 5, fontWeight: 600 }}>Reihenfolge: Bestwert war Übung #{ath.pos + 1}, heute #{i + 1}{later > 0 ? " · vorermüdet, Wertung milder" : ""}</div>}
+          <SetTable sets={ex.sets} onChange={(sets) => updEx(i, (e) => ({ ...e, sets }))} last={last ? last.sets : null} hist={hist} pos={i} />
           <input value={ex.note} onChange={(e) => updEx(i, (x) => ({ ...x, note: e.target.value }))} placeholder="Notiz …" className="fld" style={{ width: "100%", marginTop: 9, padding: "10px 12px", borderRadius: 11, border: "1px solid transparent", background: H.bg2, color: H.text, fontSize: 13, boxSizing: "border-box", outline: "none" }} />
         </Card>
       ); })}
@@ -937,15 +965,16 @@ function ActiveWorkout({ active, setActive, openPicker, finish, data }) {
     </>
   );
 }
-function SetTable({ sets, onChange, last, later = 0 }) {
+function SetTable({ sets, onChange, last, hist, pos }) {
   const add = () => onChange([...sets, { w: "", r: "" }]); const upd = (i, k, v) => onChange(sets.map((s, j) => (j === i ? { ...s, [k]: v } : s))); const del = (i) => onChange(sets.filter((_, j) => j !== i));
   return (<>
     <div style={{ display: "grid", gridTemplateColumns: "26px 1fr 1fr 30px", gap: 8, margin: "12px 0 2px" }}>{["SATZ", "KG", "WDH", ""].map((h, i) => <span key={i} style={{ fontSize: 10, letterSpacing: 1, color: H.faint, fontWeight: 700, textAlign: i ? "left" : "center" }}>{h}</span>)}</div>
     {sets.map((s, i) => {
       const done = s.w && s.r; const lp = last && last[i];
-      // Satz-Trend per e1RM gegen den bestpassenden Satz der letzten Session,
-      // mit Reihenfolge (later): heute später → mildere Wertung.
-      const wCol = setTrend(s.w, s.r, last, later), rCol = wCol;
+      // Satz-Trend gegen den All-Time-Bestwert bei vergleichbarem Gewicht (hist),
+      // mit Reihenfolge (pos): heute später als damals → mildere Wertung.
+      // Platzhalter (lp) bleiben vom letzten Training — als Lade-Hilfe.
+      const wCol = setTrend(s.w, s.r, hist, pos), rCol = wCol;
       return (
       <div key={i} style={{ display: "grid", gridTemplateColumns: "26px 1fr 1fr 30px", gap: 8, alignItems: "center", padding: "5px 0", background: done ? H.blueSoft : "transparent", borderRadius: 8 }}>
         <span style={{ width: 24, height: 24, borderRadius: 7, display: "grid", placeItems: "center", fontSize: 12, fontWeight: 750, margin: "0 auto", background: done ? H.blue : H.bg2, color: done ? "#fff" : H.sub }}>{i + 1}</span>
@@ -1004,7 +1033,7 @@ function ExercisePicker({ data, onPick, onCreate, close }) {
   </Sheet>);
 }
 
-function Detail({ ex, sess, context, back, onSave }) {
+function Detail({ ex, sess, context, back, onSave, onDelete }) {
   const [editing, setEditing] = useState(false);
   const points = sess.map((s) => ({ date: s.date, val: e1rm(bestSet(s.sets).w, bestSet(s.sets).r) }));
   const tr = trend(points.map((p) => p.val));
@@ -1017,7 +1046,13 @@ function Detail({ ex, sess, context, back, onSave }) {
   if (sess.length) { let bv = -1; for (const s of sess) for (const x of s.sets) { const e = e1rm(x.w, x.r); if (e > bv) { bv = e; bestSetStr = x.w + "×" + x.r; } } }
   const totalVol = sess.reduce((a, s) => a + s.sets.reduce((ss, x) => ss + x.w * x.r, 0), 0);
   const insight = buildInsight(sess, context); const recent = [...sess].reverse().slice(0, 6);
-  const editAction = onSave ? <button onClick={() => setEditing(true)} className="press" style={iconBtn} title="Übung bearbeiten"><Settings size={18} color={H.sub} /></button> : null;
+  const askDelete = () => { if (typeof window !== "undefined" && !window.confirm("Übung „" + ex.name + "“ löschen? (Bereits geloggte Trainings bleiben erhalten.)")) return; onDelete && onDelete(); };
+  const editAction = (onSave || onDelete) ? (
+    <div style={{ display: "flex", gap: 8 }}>
+      {onSave && <button onClick={() => setEditing(true)} className="press" style={iconBtn} title="Übung bearbeiten"><Pencil size={17} color={H.sub} /></button>}
+      {onDelete && <button onClick={askDelete} className="press" style={iconBtn} title="Übung löschen"><Trash2 size={17} color={H.down} /></button>}
+    </div>
+  ) : null;
   const cmini = (c, dd) => {
     const items = [];
     if (c && c.sleep != null) items.push(["Schlaf", c.sleep + " h", c.sleep >= 7]);
@@ -1029,7 +1064,7 @@ function Detail({ ex, sess, context, back, onSave }) {
   return (
     <Page title={ex.name} backFn={back} action={editAction} subEl={ex.gym && <span style={{ fontSize: 13, color: H.sub }}><MapPin size={12} style={{ verticalAlign: "-2px" }} /> {ex.gym}</span>}>
       {editing && <CreateExercise initial={ex} onSave={(patch) => { onSave(patch); setEditing(false); }} close={() => setEditing(false)} />}
-      {sess.length < 1 ? <div style={{ color: H.faint, padding: 20, fontSize: 14 }}>Noch keine Sessions geloggt. Tippe oben rechts aufs Zahnrad, um Name/Gruppe zu ändern.</div> : <>
+      {sess.length < 1 ? <div style={{ color: H.faint, padding: 20, fontSize: 14 }}>Noch keine Sessions geloggt. Oben rechts kannst du die Übung bearbeiten (Stift) oder löschen (Papierkorb).</div> : <>
         <div style={{ display: "flex", gap: 9, marginBottom: 9 }}>
           <Stat label={isPR ? "🏆 Top-Gewicht" : "Top-Gewicht"} value={prW + " kg"} accent />
           <Stat label="e1RM aktuell" value={cur + " kg"} />
