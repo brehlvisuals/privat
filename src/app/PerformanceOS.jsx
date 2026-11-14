@@ -326,6 +326,10 @@ function buildCoachContext(data) {
   return L.join("\n");
 }
 
+// KI-Auswertungen (Workout-Detail, Ernährung): Anweisung, Ergebnis-Box, Button.
+const COACH_ANALYST = "Du bist ein präziser, ehrlicher Performance-Coach für Felix (pescetarischer Ironman-Triathlet, 26, 186cm, ~82kg). Analysiere die gegebenen Daten konkret und knapp auf Deutsch (Du-Form). Nenne 2-4 konkrete Beobachtungen/Empfehlungen, keine Floskeln, kein Fließtext-Roman. Nutze Zahlen aus den Daten. Schlaf, HRV und Ruhepuls werden nicht getrackt.";
+const aiBoxStyle = { background: H.glass, borderRadius: 16, padding: 16, marginBottom: 12 };
+const aiBtnStyle = { width: "100%", height: 46, borderRadius: 12, border: "none", background: H.blueSoft, color: H.blue, fontWeight: 600, fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 12 };
 function AiAnalysis({ prompt, cta, title }) {
   const [txt, setTxt] = useState(""); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
   const run = async () => { setBusy(true); setErr(""); try { const r = await callClaude([{ role: "user", content: typeof prompt === "function" ? prompt() : prompt }], COACH_ANALYST); setTxt((r || "").trim() || "Keine Analyse erhalten."); } catch (e) { setErr("gerade nicht verfügbar"); } setBusy(false); };
