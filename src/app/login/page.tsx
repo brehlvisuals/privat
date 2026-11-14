@@ -4,14 +4,14 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 const H = {
-  bg: "#07070B",
-  card: "rgba(255,255,255,0.055)",
-  line: "rgba(255,255,255,0.12)",
-  text: "#F4F3F8",
-  sub: "#9C99AB",
-  blue: "#8B7CFF",
-  up: "#34E0A1",
-  down: "#FB6A62",
+  bg: "#000000",
+  card: "#1C1C1E",
+  line: "rgba(84,84,88,0.45)",
+  text: "#FFFFFF",
+  sub: "rgba(235,235,245,0.6)",
+  blue: "#7D7AFF",
+  up: "#30D158",
+  down: "#FF453A",
 };
 
 const input: React.CSSProperties = {
@@ -62,10 +62,10 @@ export default function LoginPage() {
   };
 
   return (
-    <div style={{ minHeight: "100dvh", background: "linear-gradient(180deg,#0C0A16,#07070B)", color: H.text, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-manrope), -apple-system, sans-serif", padding: 20 }}>
+    <div style={{ minHeight: "100dvh", background: "#000", color: H.text, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif", padding: 20 }}>
       <div style={{ width: "100%", maxWidth: 360 }}>
-        <div style={{ fontSize: 30, fontWeight: 820, letterSpacing: -0.7 }}>Performance OS</div>
-        <div style={{ fontSize: 14, color: H.sub, margin: "6px 0 26px" }}>Dein privates Training- & Ernährungs-Hub</div>
+        <div style={{ fontSize: 34, fontWeight: 700, letterSpacing: "-0.012em" }}>Performance OS</div>
+        <div style={{ fontSize: 15, color: H.sub, margin: "6px 0 26px" }}>Dein privates Training- & Ernährungs-Hub</div>
 
         {sent ? (
           <div style={{ background: H.card, border: "1px solid " + H.line, borderRadius: 16, padding: 20, fontSize: 14.5, lineHeight: 1.55 }}>
@@ -77,7 +77,7 @@ export default function LoginPage() {
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-Mail" autoComplete="username" style={input} />
             <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") login(); }} placeholder="Passwort" autoComplete="current-password" style={input} />
             <button onClick={login} disabled={busy || !email.trim() || !pw}
-              style={{ width: "100%", padding: 14, borderRadius: 13, border: "none", background: busy || !email.trim() || !pw ? H.card : "linear-gradient(140deg,#8B7CFF,#6E5CFF)", color: busy || !email.trim() || !pw ? H.sub : "#fff", fontWeight: 750, fontSize: 15, cursor: busy ? "default" : "pointer" }}>
+              style={{ width: "100%", padding: 14, borderRadius: 13, border: "none", background: busy || !email.trim() || !pw ? H.card : H.blue, color: busy || !email.trim() || !pw ? H.sub : "#fff", fontWeight: 750, fontSize: 15, cursor: busy ? "default" : "pointer" }}>
               {busy ? "…" : "Anmelden"}
             </button>
             {msg && <div style={{ fontSize: 13, color: H.down, marginTop: 10, lineHeight: 1.5 }}>{msg}</div>}

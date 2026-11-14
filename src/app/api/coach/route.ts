@@ -6,6 +6,8 @@ import Anthropic from "@anthropic-ai/sdk";
 // und schickt das tool_result zurück).
 
 export const runtime = "nodejs";
+// Längere Antworten/Tool-Loops brauchen mehr als das Standard-Zeitlimit.
+export const maxDuration = 60;
 
 const MODEL = "claude-sonnet-5";
 const MAX_TOKENS = 4096;

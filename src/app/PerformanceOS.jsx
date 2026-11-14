@@ -6,16 +6,21 @@ import {
   Flame, Dumbbell, Utensils, BarChart3, Plus, X, ChevronLeft, ChevronRight,
   Sparkles, MapPin, Search, Trophy, Watch, Activity, Scale, CheckCircle2,
   AlertTriangle, Zap, Clock, Settings, ClipboardList, Send, MessageCircle,
-  Camera, Mic, Pencil, HeartPulse, RefreshCw, Trash2
+  Camera, Mic, Pencil, HeartPulse, RefreshCw, Trash2, ArrowUp
 } from "lucide-react";
 
+// Apple-Design (iOS Dark Mode, Grouped-Stil): Systemfarben, keine Verläufe/Glows.
+// Flächen (glass) sind halbtransparent weiß → passen sich an: auf Schwarz wirken
+// sie wie iOS-Karten (#1C1C1E), in einem Sheet eine Ebene heller (#2C2C2E).
 const H = {
-  bg: "#07070B", bg2: "rgba(255,255,255,0.045)", card: "#16161E", cardHi: "#20202B", line: "rgba(255,255,255,0.09)",
-  text: "#F4F3F8", sub: "#9C99AB", faint: "#615F6F", blue: "#8B7CFF", blueSoft: "rgba(124,108,255,0.16)",
-  up: "#34E0A1", down: "#FB6A62", amber: "#FBBF4B", violet: "#A78BFA",
-  // Liquid-Glass-Tokens
-  glass: "rgba(255,255,255,0.055)", glassHi: "rgba(255,255,255,0.09)", glassLine: "rgba(255,255,255,0.12)",
-  blueGlow: "rgba(124,108,255,0.5)", grad: "linear-gradient(140deg,#8B7CFF,#6E5CFF)", gradSoft: "linear-gradient(90deg,#7C6CFF,#A78BFA)",
+  bg: "#000000", bg2: "rgba(118,118,128,0.24)", card: "#1C1C1E", cardHi: "#2C2C2E", line: "rgba(84,84,88,0.45)",
+  text: "#FFFFFF", sub: "rgba(235,235,245,0.6)", faint: "rgba(235,235,245,0.38)", blue: "#7D7AFF", blueSoft: "rgba(125,122,255,0.18)",
+  up: "#30D158", down: "#FF453A", amber: "#FF9F0A", violet: "#BF5AF2",
+  glass: "rgba(255,255,255,0.1)", glassHi: "rgba(255,255,255,0.14)", glassLine: "rgba(255,255,255,0.05)",
+  blueGlow: "rgba(0,0,0,0)", grad: "#7D7AFF", gradSoft: "#7D7AFF",
+  // SF Pro Rounded für Zahlen (Apple-Fitness-Look), sonst Systemschrift.
+  round: "ui-rounded, 'SF Pro Rounded', -apple-system, BlinkMacSystemFont, system-ui, sans-serif",
+  font: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif",
 };
 
 /* ---------- helpers ---------- */
@@ -107,19 +112,6 @@ function trend(vals) {
   if (pct > 2) return { label: "Steigerung", color: H.up, arrow: "↗", dir: "up" };
   if (pct < -2) return { label: "Schwächer", color: H.down, arrow: "↘", dir: "down" };
   return { label: "Plateau", color: H.amber, arrow: "→", dir: "flat" };
-}
-function buildInsight(sess, ctx) {
-  const rows = sess.map((s) => ({ v: e1rm(bestSet(s.sets).w, bestSet(s.sets).r), c: ctx[s.date] })).filter((r) => r.c);
-  if (rows.length < 4) return null;
-  const sorted = [...rows].sort((a, b) => a.v - b.v), half = Math.floor(sorted.length / 2);
-  const weak = sorted.slice(0, half), strong = sorted.slice(-half);
-  const avg = (a, k) => { const xs = a.map((r) => r.c && r.c[k]).filter((v) => typeof v === "number"); return xs.length ? xs.reduce((s, v) => s + v, 0) / xs.length : null; };
-  const parts = [];
-  const ss = avg(strong, "sleep"), sw = avg(weak, "sleep");
-  if (ss != null && sw != null && ss - sw >= 0.4) parts.push("mehr Schlaf (Ø " + ss.toFixed(1) + " h vs. " + sw.toFixed(1) + " h)");
-  const rs = avg(strong, "rhf"), rw = avg(weak, "rhf");
-  if (rs != null && rw != null && rw - rs >= 2) parts.push("niedrigerer Ruhepuls (Ø " + Math.round(rs) + " vs. " + Math.round(rw) + " bpm)");
-  return parts.length ? parts : null;
 }
 
 const MEALS = [["breakfast", "Frühstück"], ["lunch", "Mittag"], ["dinner", "Abend"], ["snack", "Snacks"]];
@@ -255,11 +247,11 @@ async function estimateFood(text) {
   const o = JSON.parse(out.replace(/```json|```/g, "").trim());
   return { n: o.n, p: Math.round(o.p), f: Math.round(o.f), c: Math.round(o.c), k: Math.round(o.k), ai: true };
 }
-const COACH_SYS = "Du bist der KI-Coach & Datenanalyst in Felix' privatem Performance OS. Felix ist pescetarischer Ironman-Triathlet, 26, 186 cm, ~83 kg. Er trainiert Schwimmen, Rad, Laufen, Kraft, Calisthenics.\n\nWICHTIG: Im Abschnitt AKTUELLE DATEN bekommst du seinen ECHTEN, VOLLSTÄNDIGEN Verlauf. Du hast Zugriff auf ALL DIESE DATEN (aus Coros & Apple Health, täglich über ~3 Wochen): Aktiv-kcal, Schritte, Schlafdauer, Schlaf-Score, Tiefschlaf- & REM-Anteil, Ruhepuls, Tages-Durchschnitts-Herzfrequenz, HRV, Gewicht und Körperfettanteil — plus den aktuellen COROS-ZUSTAND (Recovery %, VO₂max, Laufniveau, Schwellentempo, Rennprognosen 5k/10k/HM/Marathon, Trainingsbelastung mit Kurz-/Langzeit-Load & Ratio), den Gewichts-/Körperfett-Trend, die Ernährungshistorie der letzten 14 Tage (kcal/Protein/Bilanz) und alle letzten Trainings mit Sätzen/Volumen. NUTZE das aktiv für tiefe, konkrete Auswertungen — Trends, Muster, Zusammenhänge (z.B. Schlaf-Score/Tiefschlaf vs. HRV & Recovery, Trainingsbelastung vs. Ruhepuls, Gewicht/Körperfett vs. Kalorienbilanz, Volumen-Progression). Behaupte NIEMALS, du hättest keine Historie oder keinen Zugriff auf Schlaf, Herzfrequenz o.Ä. — schau IMMER zuerst in AKTUELLE DATEN. Nur wenn ein konkreter Einzelwert dort wirklich als '—' steht, benenne genau welcher (dann wurde er an dem Tag nicht gemessen).\n\nDu kannst aktiv in der App handeln über Tools:\n- log_meal: Gegessenes ins Tagebuch eintragen — für heute ODER rückwirkend (Feld 'date', YYYY-MM-DD, z.B. gestern). Bei zusammengesetzten Mahlzeiten JEDE Zutat als EIGENEN log_meal-Aufruf (nicht zusammenfassen), je mit Menge/Einheit + eigenen Nährwerten.\n- update_meal / delete_meal: bestehende Tagebuch-Einträge ändern oder löschen — anhand der [id: ...], die im Kontext hinter jedem Eintrag steht. Damit kannst du Mengen korrigieren, Werte anpassen oder Einträge entfernen.\n- create_food: ein festes Lebensmittel dauerhaft in Felix' Bibliothek anlegen, Nährwerte pro Referenzmenge.\n- adjust_activity: Aktiv-kcal (Coros/Apple Health) manuell korrigieren, auch rückwirkend per 'date' — z.B. 'addiere 500 kcal' → mode 'add', kcal 500.\nWenn du ein Tool sinnvoll einsetzen kannst, TU es direkt, statt Ausreden zu machen. Sei ein ehrlicher, fordernder Coach: klare Einordnung, konkrete Zahlen, umsetzbare Empfehlungen. Antworte auf Deutsch in der Du-Form. Kein Ersatz für Arzt bei medizinischen Fragen.";
+const COACH_SYS = "Du bist der KI-Coach & Datenanalyst in Felix' privatem Performance OS. Felix ist pescetarischer Ironman-Triathlet, 26, 186 cm, ~83 kg. Er trainiert Schwimmen, Rad, Laufen, Kraft, Calisthenics.\n\nDATEN: Im Abschnitt AKTUELLE DATEN bekommst du seinen echten Verlauf: heutige Ernährung (inkl. Einträge mit id), Ernährungshistorie der letzten 14 Tage (kcal/Protein/Bilanz), tägliche Aktivität (Aktiv-kcal, Schritte) über ~3 Wochen aus Coros, den Coros-Fitnessstand (VO₂max, Laufniveau, Schwellentempo, Rennprognosen, Trainingsbelastung) und die letzten Krafttrainings mit Sätzen/Volumen. WICHTIG: Felix trägt seine Uhr NICHT nachts — Schlaf, HRV, Ruhepuls, Recovery und Readiness gibt es bewusst nicht. Frag nicht danach und stütze keine Empfehlungen darauf. Gewicht trackt er aktuell nicht. Nutze die vorhandenen Daten aktiv für konkrete Auswertungen (Kalorienbilanz, Protein, Trainingsprogression, Volumen, Belastung). Behaupte nie, keinen Zugriff zu haben, ohne zuerst in AKTUELLE DATEN zu schauen; steht ein Wert als '—', benenne genau welcher. Antworte kurz und auf den Punkt (meist unter 150 Wörtern), außer Felix will ausdrücklich Details.\n\nDu kannst aktiv in der App handeln über Tools:\n- log_meal: Gegessenes ins Tagebuch eintragen — für heute ODER rückwirkend (Feld 'date', YYYY-MM-DD, z.B. gestern). Bei zusammengesetzten Mahlzeiten JEDE Zutat als EIGENEN log_meal-Aufruf (nicht zusammenfassen), je mit Menge/Einheit + eigenen Nährwerten.\n- update_meal / delete_meal: bestehende Tagebuch-Einträge ändern oder löschen — anhand der [id: ...], die im Kontext hinter jedem Eintrag steht. Damit kannst du Mengen korrigieren, Werte anpassen oder Einträge entfernen.\n- create_food: ein festes Lebensmittel dauerhaft in Felix' Bibliothek anlegen, Nährwerte pro Referenzmenge.\n- adjust_activity: Aktiv-kcal (Coros/Apple Health) manuell korrigieren, auch rückwirkend per 'date' — z.B. 'addiere 500 kcal' → mode 'add', kcal 500.\nWenn du ein Tool sinnvoll einsetzen kannst, TU es direkt, statt Ausreden zu machen. Sei ein ehrlicher, fordernder Coach: klare Einordnung, konkrete Zahlen, umsetzbare Empfehlungen. Antworte auf Deutsch in der Du-Form. Kein Ersatz für Arzt bei medizinischen Fragen.";
 
-// Baut aus dem echten App-Zustand einen REICHEN Live-Kontext für den Coach:
-// Ziele, Heute-Detail, Gewichtsverlauf, Health-Metriken über Wochen,
-// Ernährungshistorie und alle Trainings — damit tiefe Auswertungen möglich sind.
+// Baut aus dem echten App-Zustand den Live-Kontext für den Coach: Ziele,
+// Heute-Detail, Aktivität über Wochen, Coros-Fitness, Ernährungshistorie und
+// Trainings. (Kein Schlaf/HRV/Ruhepuls — Uhr wird nachts nicht getragen.)
 function buildCoachContext(data) {
   const s = data.settings;
   const dayTot = (nn) => [].concat(...MEALS.map(([k]) => (nn && nn[k]) || [])).reduce((a, m) => ({ p: a.p + m.p, f: a.f + m.f, c: a.c + m.c, k: a.k + m.k }), { p: 0, f: 0, c: 0, k: 0 });
@@ -289,37 +281,24 @@ function buildCoachContext(data) {
   if (todayEntries.length) { L.push("Einträge heute (per id änderbar/löschbar):"); L.push(todayEntries.join("\n")); }
   const yEntries = entryLines(dstr(1));
   if (yEntries.length) { L.push("Einträge gestern (" + dstr(1) + "):"); L.push(yEntries.join("\n")); }
-  if (ctx.sleep != null) L.push("Schlaf letzte Nacht: " + ctx.sleep + " h" + (ctx.sleepScore != null ? " (Score " + ctx.sleepScore + ", Tief " + num(ctx.sleepDeep) + "%, REM " + num(ctx.sleepRem) + "%)" : "") + ".");
-  { const hv = hrvOf(data, today); if (ctx.rhf != null || hv != null || ctx.avgHr != null) L.push("Ruhepuls: " + num(ctx.rhf) + " bpm." + (ctx.avgHr != null ? " Ø-Herzfrequenz: " + ctx.avgHr + " bpm." : "") + (hv != null ? " HRV: " + hv + " ms." : "")); }
 
-  // Coros-Zustand (Snapshot): Recovery, Fitness/VO₂max, Rennprognosen, Trainingsbelastung.
+  // Coros-Fitnessstand (tagsüber gültig): VO₂max, Rennprognosen, Trainingsbelastung.
   const co = data.coros || {};
-  if (co.recovery || co.fitness || co.load) {
-    L.push("\n== COROS-ZUSTAND (aktuell) ==");
-    if (co.recovery) L.push("Recovery: " + co.recovery.pct + "%" + (co.recovery.level ? " (" + co.recovery.level + ")" : "") + (co.recovery.full ? ", voll erholt in " + co.recovery.full : "") + ".");
+  if (co.fitness || co.load) {
+    L.push("\n== COROS-FITNESS (aktuell) ==");
     if (co.fitness) { const f = co.fitness; L.push("Fitness: VO₂max " + num(f.vo2max) + ", Laufniveau " + num(f.runningLevel) + ", Schwellentempo " + num(f.threshold) + ". Rennprognosen — 5k " + num(f.pred5k) + ", 10k " + num(f.pred10k) + ", HM " + num(f.predHM) + ", Marathon " + num(f.predM) + "."); }
     if (co.load) L.push("Trainingsbelastung: " + num(co.load.comment) + " — Kurzzeit-Load " + num(co.load.short) + ", Langzeit-Load " + num(co.load.long) + ", Ratio " + num(co.load.ratio) + ".");
   }
 
-  // Gewichtsverlauf (alle Messungen chronologisch)
-  const wDates = Object.keys(data.context || {}).filter((dd) => typeof (data.context[dd] || {}).weight === "number").sort();
-  L.push("\n== GEWICHTSVERLAUF ==");
-  if (wDates.length) {
-    L.push(wDates.map((dd) => fmtShort(dd) + ": " + data.context[dd].weight + " kg").join("  |  "));
-    const first = data.context[wDates[0]].weight, last = data.context[wDates[wDates.length - 1]].weight;
-    const d = Math.round((last - first) * 10) / 10;
-    L.push("Trend: " + first + " → " + last + " kg (Δ " + (d >= 0 ? "+" : "") + d + " kg über " + wDates.length + " Messungen).");
-  } else L.push("Noch keine Gewichtsdaten synchronisiert.");
-
   // Tages-Metriken der letzten 21 Tage
-  L.push("\n== HEALTH-METRIKEN je Tag (Aktiv-kcal / Schritte / Schlaf h / Schlaf-Score / Tief% / REM% / Ruhepuls / Ø-Herzfrequenz / HRV / Gewicht / Körperfett %) ==");
+  L.push("\n== AKTIVITÄT je Tag (Aktiv-kcal / Schritte, Coros) ==");
   const dayLines = [];
   for (let i = 0; i <= 21; i++) {
     const dd = dstr(i); const c = data.context[dd]; const a = actOf(data, dd);
-    if (!c && a == null) continue;
-    dayLines.push(fmtShort(dd) + ": Akt " + num(a) + ", Schritte " + num(c && c.steps) + ", Schlaf " + num(c && c.sleep) + ", Score " + num(c && c.sleepScore) + ", Tief " + num(c && c.sleepDeep) + "%, REM " + num(c && c.sleepRem) + "%, RHF " + num(c && c.rhf) + ", ØHF " + num(c && c.avgHr) + ", HRV " + num(hrvOf(data, dd)) + ", Gew " + num(c && c.weight) + ", KF " + num(c && c.bodyFat));
+    if (a == null && !(c && c.steps != null)) continue;
+    dayLines.push(fmtShort(dd) + ": Akt " + num(a) + " kcal, Schritte " + num(c && c.steps));
   }
-  L.push(dayLines.length ? dayLines.join("\n") : "keine Health-Daten");
+  L.push(dayLines.length ? dayLines.join("\n") : "keine Aktivitätsdaten");
 
   // Ernährungshistorie der letzten 14 Tage
   L.push("\n== ERNÄHRUNG letzte 14 Tage (kcal / Protein / Bilanz) ==");
@@ -347,57 +326,6 @@ function buildCoachContext(data) {
   return L.join("\n");
 }
 
-// Readiness-Score aus Schlaf, Ruhepuls (vs. Baseline) und Vortagsbelastung.
-function readiness(data) {
-  const c = data.context[today] || {};
-  const hrvToday = hrvOf(data, today);
-  const yA = actOf(data, dstr(1));
-  const factors = [];
-  let score = 55;
-  if (c.sleep != null) { score += clampN((c.sleep - 7) * 12, -22, 24); factors.push(["Schlaf", c.sleep + " h", c.sleep >= 7]); }
-  // Ruhepuls vs. 14-Tage-Baseline
-  const rs = [];
-  for (let i = 1; i <= 14; i++) { const cc = data.context[dstr(i)]; if (cc && typeof cc.rhf === "number") rs.push(cc.rhf); }
-  const rbase = rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : null;
-  if (c.rhf != null && rbase != null) { score += clampN(-(c.rhf - rbase) * 3, -18, 14); factors.push(["Ruhepuls", c.rhf + " bpm", c.rhf <= rbase]); }
-  else if (c.rhf != null) factors.push(["Ruhepuls", c.rhf + " bpm", null]);
-  // HRV vs. persönliche Normalspanne — nach COROS-Logik (4 Stufen).
-  // Baseline μ ± Streuung σ aus bis zu 30 Vortagen. „Erhöht" (über Spanne) = positiv
-  // mit Hinweis; „Reduziert"/„Niedrig" (drunter) = Abzug.
-  const hs = [];
-  for (let i = 1; i <= 30; i++) { const v = hrvOf(data, dstr(i)); if (typeof v === "number") hs.push(v); }
-  let hrvNote = null;
-  if (hrvToday != null) {
-    if (hs.length >= 4) {
-      const mu = hs.reduce((a, b) => a + b, 0) / hs.length;
-      const sd = Math.max(3, Math.sqrt(hs.reduce((a, b) => a + (b - mu) * (b - mu), 0) / hs.length));
-      const z = (hrvToday - mu) / sd;
-      let pts, status, good;
-      if (z >= 0.5) { pts = 16; status = "erhöht"; good = true; hrvNote = "HRV über deiner Normalspanne — meist gut erholt; bei plötzlichem Sprung auch auf Krankheit/Alkohol/Schlaf achten."; }
-      else if (z > -0.5) { pts = 12; status = "normal"; good = true; }
-      else if (z > -1.2) { pts = -10; status = "reduziert"; good = false; hrvNote = "HRV leicht unter deiner Normalspanne — dein Körper steht unter Belastung, evtl. lockerer machen."; }
-      else { pts = -20; status = "niedrig"; good = false; hrvNote = "HRV deutlich unter Normalspanne — starke Belastung/unvollständige Erholung, Ruhe einplanen."; }
-      score += pts;
-      factors.push(["HRV", hrvToday + " ms · " + status, good]);
-    } else {
-      // Noch zu wenig Verlauf für eine Normalspanne → einfacher Bezug zum bisherigen Schnitt.
-      const mu = hs.length ? hs.reduce((a, b) => a + b, 0) / hs.length : null;
-      if (mu != null) score += clampN((hrvToday - mu) * 0.7, -16, 16);
-      factors.push(["HRV", hrvToday + " ms", mu != null ? hrvToday >= mu : null]);
-    }
-  }
-  if (yA != null) { score += yA > 1500 ? -12 : yA > 800 ? -4 : 4; factors.push(["Gestern", yA + " kcal", yA <= 800]); }
-  score = Math.max(5, Math.min(99, Math.round(score)));
-  const label = score >= 72 ? "Bereit — voll angreifen 💪" : score >= 50 ? "Solide — moderat trainieren" : "Erholung priorisieren 🧘";
-  return { score, label, factors, note: hrvNote, has: c.sleep != null || c.rhf != null || hrvToday != null };
-}
-
-const COACH_ANALYST = "Du bist ein präziser, ehrlicher Performance-Coach für Felix (pescetarischer Ironman-Triathlet, 26, 186cm, ~82kg). Analysiere die gegebenen Daten konkret und knapp auf Deutsch (Du-Form). Nenne 2-4 konkrete Beobachtungen/Empfehlungen, keine Floskeln, kein Fließtext-Roman. Nutze Zahlen aus den Daten.";
-
-const aiBoxStyle = { background: H.blueSoft, border: "1px solid " + H.blue + "44", borderRadius: 18, padding: 16, marginBottom: 12 };
-const aiBtnStyle = { width: "100%", padding: 13, borderRadius: 14, border: "1px solid " + H.blue + "55", background: H.blueSoft, color: H.blue, fontWeight: 750, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 12 };
-
-// Wiederverwendbare KI-Analyse: Button -> Analyse-Text.
 function AiAnalysis({ prompt, cta, title }) {
   const [txt, setTxt] = useState(""); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
   const run = async () => { setBusy(true); setErr(""); try { const r = await callClaude([{ role: "user", content: typeof prompt === "function" ? prompt() : prompt }], COACH_ANALYST); setTxt((r || "").trim() || "Keine Analyse erhalten."); } catch (e) { setErr("gerade nicht verfügbar"); } setBusy(false); };
@@ -423,15 +351,15 @@ function prList(data) {
 /* ================= SPLASH ================= */
 function Splash() {
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "linear-gradient(160deg,#0C0A16,#07070B)", display: "grid", placeItems: "center", animation: "splashOut 1.65s ease forwards", pointerEvents: "none" }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "#000", display: "grid", placeItems: "center", animation: "splashOut 1.65s ease forwards", pointerEvents: "none" }}>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20 }}>
-        <div style={{ width: 100, height: 100, borderRadius: 28, background: "linear-gradient(140deg,#9A8CFF,#6E5CFF 55%,#4A38C4)", boxShadow: "0 24px 60px -14px rgba(124,108,255,.7), inset 0 1px 0 rgba(255,255,255,.35)", display: "grid", placeItems: "center", animation: "popIn .6s cubic-bezier(.34,1.56,.64,1) both" }}>
+        <div style={{ width: 100, height: 100, borderRadius: 28, background: "linear-gradient(140deg,#9A8CFF,#6E5CFF 55%,#4A38C4)", display: "grid", placeItems: "center", animation: "popIn .5s cubic-bezier(.32,.72,0,1) both" }}>
           <svg width="66" height="66" viewBox="0 0 512 512">
             <polyline points="118,338 210,262 296,306 392,168" fill="none" stroke="#fff" strokeWidth="34" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="430" strokeDashoffset="430" style={{ animation: "draw .95s .25s cubic-bezier(.65,0,.35,1) forwards" }} />
             <circle cx="392" cy="168" r="27" fill="#fff" style={{ opacity: 0, animation: "popDot .45s 1s forwards" }} />
           </svg>
         </div>
-        <div style={{ fontSize: 23, fontWeight: 820, letterSpacing: -0.5, color: "#fff", animation: "popIn .6s .35s both" }}>Performance OS</div>
+        <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em", color: "#fff", animation: "popIn .5s .3s both" }}>Performance OS</div>
       </div>
     </div>
   );
@@ -444,7 +372,10 @@ export default function App() {
   const [active, setActive] = useState(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [splash, setSplash] = useState(true);
-  const [msgs, setMsgs] = useState([{ role: "assistant", content: "Moin Felix! Frag mich was zu Training, Ernährung oder Recovery — oder schick mir, was du isst (z.B. Döner mit allem) für eine schnelle Schätzung." }]);
+  // Coach-Verlauf + „schreibt gerade" leben hier oben: Schließen/Öffnen während
+  // einer Antwort verliert nichts und kann keinen zweiten Request dazwischenfunken.
+  const [msgs, setMsgs] = useState([COACH_HELLO]);
+  const [coachBusy, setCoachBusy] = useState(false);
   useEffect(() => { load().then(setData); }, []);
   useEffect(() => { const t = setTimeout(() => setSplash(false), 1650); return () => clearTimeout(t); }, []);
   // Laufendes Training lokal sichern, damit ein versehentliches App-Schließen es
@@ -460,31 +391,27 @@ export default function App() {
   const reload = () => load().then(setData);
 
   return (
-    <div style={{ position: "relative", minHeight: "100dvh", background: "linear-gradient(180deg,#0A0A12 0%,#07070B 60%,#050509 100%)", fontFamily: "var(--font-manrope), -apple-system, ui-sans-serif, sans-serif", color: H.text }}>
+    <div style={{ position: "relative", minHeight: "100dvh", background: H.bg, fontFamily: H.font, color: H.text }}>
       <Style />
       {splash && <Splash />}
       <div className="rotate-hint">📱 Bitte im Hochformat nutzen — Performance OS ist fürs Hochformat gebaut.</div>
-      {/* Farb-Glow-Ebene für Tiefe hinter dem Glas */}
-      <div aria-hidden style={{ position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none",
-        background: "radial-gradient(120% 55% at 50% -8%, rgba(124,108,255,0.22), transparent 60%), radial-gradient(90% 45% at 85% 6%, rgba(167,139,250,0.14), transparent 55%)" }} />
-      <div style={{ maxWidth: 460, margin: "0 auto", minHeight: "100dvh", position: "relative", zIndex: 1, display: "flex", flexDirection: "column" }}>
-        <div id="appscroll" className="scroll" style={{ flex: 1, padding: "env(safe-area-inset-top) 0 calc(96px + env(safe-area-inset-bottom))" }}>
+      <div style={{ maxWidth: 460, margin: "0 auto", minHeight: "100dvh", position: "relative", display: "flex", flexDirection: "column" }}>
+        <div id="appscroll" className="scroll" style={{ flex: 1, padding: "env(safe-area-inset-top) 0 calc(100px + env(safe-area-inset-bottom))" }}>
           <div key={tab} className="fade-in">
-            {tab === "home" && <><Home data={data} commit={commit} reload={reload} /><Analyse data={data} /></>}
+            {tab === "home" && <Home data={data} commit={commit} reload={reload} goTrain={() => setTab("train")} />}
             {tab === "train" && <Training data={data} commit={commit} active={active} setActive={setActive} />}
             {tab === "food" && <Food data={data} commit={commit} />}
-            {tab === "age" && <BioAge data={data} />}
           </div>
         </div>
 
         {!chatOpen && (
           <button onClick={() => setChatOpen(true)} aria-label="KI-Coach" className="press"
-            style={{ position: "fixed", bottom: "calc(84px + env(safe-area-inset-bottom))", right: "max(16px, calc(50% - 214px))", width: 56, height: 56, borderRadius: 28, border: "1px solid rgba(255,255,255,.18)", cursor: "pointer", zIndex: 45,
-              background: H.grad, boxShadow: "0 10px 30px -6px " + H.blueGlow + ", inset 0 1px 0 rgba(255,255,255,.3)", display: "grid", placeItems: "center" }}>
-            <Sparkles size={24} color="#fff" />
+            style={{ position: "fixed", bottom: "calc(76px + env(safe-area-inset-bottom))", right: "max(16px, calc(50% - 214px))", width: 52, height: 52, borderRadius: 26, border: "none", cursor: "pointer", zIndex: 45,
+              background: H.blue, boxShadow: "0 8px 24px rgba(0,0,0,.55)", display: "grid", placeItems: "center" }}>
+            <Sparkles size={23} color="#fff" />
           </button>
         )}
-        {chatOpen && <Coach msgs={msgs} setMsgs={setMsgs} close={() => setChatOpen(false)} data={data} commit={commit} />}
+        {chatOpen && <Coach msgs={msgs} setMsgs={setMsgs} close={() => setChatOpen(false)} data={data} commit={commit} busy={coachBusy} setBusy={setCoachBusy} reset={() => setMsgs([COACH_HELLO])} />}
 
         <Nav tab={tab} setTab={setTab} active={!!active} />
       </div>
@@ -493,6 +420,8 @@ export default function App() {
 }
 
 /* ================= COACH CHAT ================= */
+// local: nur Anzeige, wird nicht an die KI geschickt.
+const COACH_HELLO = { role: "assistant", local: true, content: "Moin Felix! Frag mich was zu Training oder Ernährung — oder schreib mir bzw. schick ein Foto von dem, was du gegessen hast, dann trage ich es ein." };
 const COACH_MEALS = { breakfast: "Frühstück", lunch: "Mittag", dinner: "Abend", snack: "Snack" };
 const TOOL_LABEL = { log_meal: "📝 Eingetragen", create_food: "🥗 Lebensmittel angelegt", adjust_activity: "🔥 Aktiv-kcal angepasst" };
 function displayOf(m) {
@@ -510,8 +439,8 @@ function displayOf(m) {
   return null;
 }
 
-function Coach({ msgs, setMsgs, close, data, commit }) {
-  const [text, setText] = useState(""); const [busy, setBusy] = useState(false);
+function Coach({ msgs, setMsgs, close, data, commit, busy, setBusy, reset }) {
+  const [text, setText] = useState("");
   const [img, setImg] = useState(null); // { media_type, data(base64), preview }
   const [rec, setRec] = useState(false);
   const endRef = useRef(null); const fileRef = useRef(null); const recogRef = useRef(null);
@@ -590,26 +519,44 @@ function Coach({ msgs, setMsgs, close, data, commit }) {
     return { results, nextData: d };
   };
 
+  // Für die API aufbereiten: lokale Hinweise (Begrüßung/Fehler) raus, Fotos nur
+  // aus der aktuellen Runde mitschicken (ältere → Platzhalter) und den Verlauf
+  // begrenzen. Sonst wird jede Folgeanfrage größer — Base64-Fotos sprengen
+  // schnell das 4,5-MB-Limit und der Coach „hakt" ab der zweiten Nachricht.
+  const toApi = (list, turnStart) => {
+    const out = [];
+    list.forEach((m, i) => {
+      if (m.local) return;
+      let c = m.content;
+      if (Array.isArray(c) && i < turnStart) c = c.map((b) => (b.type === "image" ? { type: "text", text: "[Foto von vorhin]" } : b));
+      out.push({ role: m.role, content: c });
+    });
+    return out.length > 30 ? out.slice(-30) : out;
+  };
+
   const send = async () => {
     const t = text.trim(); if ((!t && !img) || busy) return;
     const userContent = img
       ? [...(t ? [{ type: "text", text: t }] : [{ type: "text", text: "Was ist das? Schätze die Nährwerte." }]), { type: "image", source: { type: "base64", media_type: img.media_type, data: img.data } }]
       : t;
     // Sauberer Ausgangs-Verlauf (nur bis zur neuen User-Nachricht). Bei einem Fehler
-    // fallen wir hierauf zurück, damit kein unvollständiges Tool-Paar hängen bleibt
-    // und die Folgeanfragen vergiftet.
-    const baseMsgs = [...msgs, { role: "user", content: userContent }];
+    // fallen wir hierauf zurück, damit kein unvollständiges Tool-Paar hängen bleibt.
+    const baseMsgs = [...msgs.filter((m) => !m.error), { role: "user", content: userContent }];
+    const turnStart = baseMsgs.length - 1;
+    const sentImg = img;
     let convo = baseMsgs; setMsgs(convo); setText(""); setImg(null); setBusy(true);
     let work = data;
     const sys = COACH_SYS + "\n\n## AKTUELLE DATEN\n" + buildCoachContext(data);
     try {
       for (let iter = 0; iter < 5; iter++) {
-        const res = await fetch("/api/coach", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: convo.map((m) => ({ role: m.role, content: m.content })), system: sys, tools: true }) }).then((r) => r.json());
-        if (!res || !res.content || res.error) throw new Error(res && res.error ? res.error : "bad response");
+        const ctrl = new AbortController(); const tmo = setTimeout(() => ctrl.abort(), 75000);
+        let resp;
+        try { resp = await fetch("/api/coach", { method: "POST", headers: { "Content-Type": "application/json" }, signal: ctrl.signal, body: JSON.stringify({ messages: toApi(convo, turnStart), system: sys, tools: true }) }); }
+        finally { clearTimeout(tmo); }
+        let res = null; try { res = await resp.json(); } catch (e) { /* keine JSON-Antwort */ }
+        if (!resp.ok || !res || !res.content || res.error) { const err = new Error((res && res.error) || (resp.ok ? "keine gültige Antwort vom Server" : "HTTP " + resp.status)); err.status = resp.status; throw err; }
         convo = [...convo, { role: "assistant", content: res.content }]; setMsgs(convo);
-        // Tools ausführen, sobald Tool-Blöcke da sind — auch wenn stop_reason
-        // "max_tokens" ist (bei vielen Einträgen wird das Limit sonst erreicht,
-        // die Aktionen liefen dann nie).
+        // Tools ausführen, sobald Tool-Blöcke da sind — auch bei stop_reason "max_tokens".
         const toolUses = res.content.filter((b) => b.type === "tool_use");
         if (toolUses.length) {
           const { results, nextData } = await applyActions(toolUses, work); work = nextData;
@@ -620,15 +567,33 @@ function Coach({ msgs, setMsgs, close, data, commit }) {
       }
     } catch (e) {
       // Kaputten (unvollständigen) Tool-Verlauf verwerfen, nur die User-Nachricht + Hinweis behalten.
-      setMsgs([...baseMsgs, { role: "assistant", content: "Hm, da ging was schief. Probier's nochmal." }]);
+      const why = e && e.name === "AbortError" ? "Das hat zu lange gedauert." : e && e.status === 413 ? "Die Anfrage war zu groß (z.B. Foto)." : "Das hat gerade nicht geklappt" + (e && e.message ? " (" + e.message + ")" : "") + ".";
+      // Fehlgeschlagene Frage aus dem Verlauf nehmen und Text/Foto zurück ins
+      // Eingabefeld legen — ein erneutes Senden schickt sie dann sauber einmal.
+      setMsgs([...msgs.filter((m) => !m.error), { role: "assistant", content: why + " Deine Nachricht steht wieder unten — einfach nochmal senden.", local: true, error: true }]);
+      setText(t); setImg(sentImg);
     }
     setBusy(false);
   };
 
+  // Fotos vor dem Senden verkleinern (max. 1280 px, JPEG) — iPhone-Fotos sind
+  // sonst mehrere MB groß und reißen das Request-Limit.
   const onPickImg = (e) => {
     const file = e.target.files && e.target.files[0]; if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => { const res = String(reader.result); const base64 = res.split(",")[1] || ""; setImg({ media_type: file.type || "image/jpeg", data: base64, preview: res }); };
+    reader.onload = () => {
+      const src = String(reader.result);
+      const im = new Image();
+      im.onload = () => {
+        const sc = Math.min(1, 1280 / Math.max(im.width, im.height));
+        const cv = document.createElement("canvas"); cv.width = Math.round(im.width * sc); cv.height = Math.round(im.height * sc);
+        cv.getContext("2d").drawImage(im, 0, 0, cv.width, cv.height);
+        const url = cv.toDataURL("image/jpeg", 0.82);
+        setImg({ media_type: "image/jpeg", data: url.split(",")[1] || "", preview: url });
+      };
+      im.onerror = () => setImg({ media_type: file.type || "image/jpeg", data: src.split(",")[1] || "", preview: src });
+      im.src = src;
+    };
     reader.readAsDataURL(file); e.target.value = "";
   };
 
@@ -651,39 +616,50 @@ function Coach({ msgs, setMsgs, close, data, commit }) {
     recogRef.current = r; setRec(true); try { r.start(); } catch (e) { setRec(false); recogRef.current = null; }
   };
 
+  const canSend = !busy && (text.trim() || img);
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", flexDirection: "column", background: H.bg }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "calc(16px + env(safe-area-inset-top)) 18px 16px", borderBottom: "1px solid " + H.line }}>
-        <span style={{ width: 34, height: 34, borderRadius: 17, background: H.grad, boxShadow: "0 4px 14px -3px " + H.blueGlow, display: "grid", placeItems: "center" }}><Sparkles size={18} color="#fff" /></span>
-        <div style={{ flex: 1 }}><div style={{ fontSize: 15.5, fontWeight: 750 }}>KI-Coach</div><div style={{ fontSize: 11.5, color: H.sub }}>kennt deinen Kontext</div></div>
-        <button onClick={close} style={{ all: "unset", cursor: "pointer", color: H.sub }}><X size={22} /></button>
+    <div className="fade-in" style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", flexDirection: "column", background: H.bg }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "calc(10px + env(safe-area-inset-top)) 12px 10px", background: "rgba(22,22,24,0.85)", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)", borderBottom: "0.5px solid rgba(84,84,88,0.65)" }}>
+        <button onClick={reset} disabled={busy} className="press" style={{ all: "unset", cursor: busy ? "default" : "pointer", color: busy ? H.faint : H.blue, fontSize: 16, padding: "4px 6px", width: 92 }}>Neuer Chat</button>
+        <div style={{ flex: 1, textAlign: "center" }}>
+          <div style={{ fontSize: 17, fontWeight: 600 }}>Coach</div>
+          <div style={{ fontSize: 12, color: H.sub }}>{busy ? "schreibt …" : "kennt deine Daten"}</div>
+        </div>
+        <div style={{ width: 92, display: "flex", justifyContent: "flex-end" }}>
+          <button onClick={close} className="press" aria-label="Schließen" style={{ all: "unset", cursor: "pointer", width: 30, height: 30, borderRadius: 15, background: H.bg2, display: "grid", placeItems: "center", color: H.sub }}><X size={16} strokeWidth={2.6} /></button>
+        </div>
       </div>
-      <div className="scroll" style={{ flex: 1, overflowY: "auto", padding: 16 }}>
-        {msgs.map((m, i) => { const disp = displayOf(m); if (disp == null) return null; return (
-          <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start", marginBottom: 10 }}>
-            <div style={{ maxWidth: "82%", padding: "11px 14px", borderRadius: 16, fontSize: 14, lineHeight: 1.5, whiteSpace: "pre-wrap",
-              background: m.role === "user" ? H.blue : H.card, color: m.role === "user" ? "#fff" : H.text, border: m.role === "user" ? "none" : "1px solid " + H.line,
-              borderBottomRightRadius: m.role === "user" ? 4 : 16, borderBottomLeftRadius: m.role === "user" ? 16 : 4 }}>{disp}</div>
+      <div className="scroll" style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
+        {msgs.map((m, i) => { const disp = displayOf(m); if (disp == null) return null; const me = m.role === "user"; return (
+          <div key={i} style={{ display: "flex", justifyContent: me ? "flex-end" : "flex-start", marginBottom: 6 }}>
+            <div style={{ maxWidth: "80%", padding: "9px 14px", borderRadius: 19, fontSize: 16, lineHeight: 1.38, whiteSpace: "pre-wrap", overflowWrap: "anywhere",
+              background: me ? H.blue : m.error ? "rgba(255,69,58,0.18)" : H.cardHi, color: me ? "#fff" : H.text }}>{disp}</div>
           </div>
         ); })}
-        {busy && <div style={{ fontSize: 13, color: H.sub, padding: "2px 4px" }}>Coach tippt …</div>}
-        <div ref={endRef} />
-      </div>
-      <div style={{ padding: 14, borderTop: "1px solid " + H.line, paddingBottom: "calc(14px + env(safe-area-inset-bottom))" }}>
-        {img && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, background: H.bg2, borderRadius: 12, padding: 8 }}>
-            <img src={img.preview} alt="" style={{ width: 46, height: 46, borderRadius: 9, objectFit: "cover" }} />
-            <span style={{ flex: 1, fontSize: 12.5, color: H.sub }}>Foto angehängt</span>
-            <button onClick={() => setImg(null)} className="press" style={{ all: "unset", cursor: "pointer", color: H.faint, fontSize: 18, padding: "0 6px" }}>×</button>
+        {busy && (
+          <div style={{ display: "flex", marginBottom: 6 }}>
+            <div className="typing" style={{ padding: "12px 14px", borderRadius: 19, background: H.cardHi, display: "flex", gap: 5 }}><i /><i /><i /></div>
           </div>
         )}
-        <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+        <div ref={endRef} />
+      </div>
+      <div style={{ padding: "8px 10px", paddingBottom: "calc(8px + env(safe-area-inset-bottom))", background: "rgba(22,22,24,0.85)", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)", borderTop: "0.5px solid rgba(84,84,88,0.65)" }}>
+        {img && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, background: H.bg2, borderRadius: 14, padding: 7 }}>
+            <img src={img.preview} alt="" style={{ width: 44, height: 44, borderRadius: 9, objectFit: "cover" }} />
+            <span style={{ flex: 1, fontSize: 14, color: H.sub }}>Foto angehängt</span>
+            <button onClick={() => setImg(null)} className="press" aria-label="Foto entfernen" style={{ all: "unset", cursor: "pointer", color: H.sub, padding: "0 6px" }}><X size={18} /></button>
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
           <input ref={fileRef} type="file" accept="image/*" onChange={onPickImg} style={{ display: "none" }} />
-          <button onClick={() => fileRef.current && fileRef.current.click()} title="Foto" className="press" style={{ width: 44, height: 46, flexShrink: 0, borderRadius: 12, border: "none", background: H.bg2, color: H.sub, cursor: "pointer", display: "grid", placeItems: "center" }}><Camera size={19} /></button>
-          <button onClick={toggleDictation} title="Diktieren" className="press" style={{ width: 44, height: 46, flexShrink: 0, borderRadius: 12, border: "none", background: rec ? H.down : H.bg2, color: rec ? "#fff" : H.sub, cursor: "pointer", display: "grid", placeItems: "center" }}><Mic size={19} /></button>
-          <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") send(); }} placeholder={rec ? "Sprich jetzt …" : "Frag den Coach …"} className="fld"
-            style={{ flex: 1, minWidth: 0, padding: "13px 14px", borderRadius: 13, border: "1px solid transparent", background: H.bg2, color: H.text, fontSize: 15, outline: "none" }} />
-          <button onClick={send} disabled={busy || (!text.trim() && !img)} className="press" style={{ width: 48, height: 46, flexShrink: 0, borderRadius: 13, border: "none", background: busy || (!text.trim() && !img) ? H.card : H.blue, color: "#fff", cursor: "pointer", display: "grid", placeItems: "center" }}><Send size={18} /></button>
+          <button onClick={() => fileRef.current && fileRef.current.click()} aria-label="Foto" className="press" style={{ all: "unset", cursor: "pointer", width: 36, height: 36, display: "grid", placeItems: "center", color: H.blue, flexShrink: 0 }}><Camera size={23} /></button>
+          <button onClick={toggleDictation} aria-label="Diktieren" className="press" style={{ all: "unset", cursor: "pointer", width: 36, height: 36, borderRadius: 18, display: "grid", placeItems: "center", color: rec ? "#fff" : H.blue, background: rec ? H.down : "transparent", flexShrink: 0 }}><Mic size={22} /></button>
+          <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", background: H.bg2, borderRadius: 20, padding: "3px 3px 3px 14px" }}>
+            <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") send(); }} placeholder={rec ? "Sprich jetzt …" : "Nachricht"} enterKeyHint="send"
+              style={{ flex: 1, minWidth: 0, padding: "7px 0", border: "none", background: "transparent", color: H.text, fontSize: 17, outline: "none" }} />
+            <button onClick={send} disabled={!canSend} aria-label="Senden" className="press" style={{ width: 30, height: 30, flexShrink: 0, borderRadius: 15, border: "none", background: canSend ? H.blue : "rgba(118,118,128,0.4)", color: "#fff", cursor: canSend ? "pointer" : "default", display: "grid", placeItems: "center" }}><ArrowUp size={18} strokeWidth={2.8} /></button>
+          </div>
         </div>
       </div>
     </div>
@@ -739,16 +715,12 @@ function Training({ data, commit, active, setActive }) {
   return (
     <Page title={active ? "Aktives Workout" : "Training"}>
       {!active && (
-        <div style={{ display: "flex", gap: 4, marginBottom: 16, background: H.bg2, padding: 4, borderRadius: 12, width: "fit-content" }}>
-          {[["workout", "Workouts"], ["library", "Übungen"], ["records", "Rekorde"]].map(([k, l]) => (
-            <button key={k} onClick={() => setSeg(k)} style={{ border: "none", cursor: "pointer", padding: "7px 16px", borderRadius: 9, fontSize: 13.5, fontWeight: 700, background: mode === k ? H.card : "transparent", color: mode === k ? H.text : H.sub }}>{l}</button>
-          ))}
-        </div>
+        <Segmented value={mode} onChange={setSeg} items={[["workout", "Workouts"], ["library", "Übungen"], ["records", "Rekorde"]]} />
       )}
       {active ? <ActiveWorkout active={active} setActive={setActive} openPicker={() => setPicker(true)} finish={finish} data={data} />
         : mode === "workout" ? (
           <>
-            <button onClick={startWorkout} style={{ width: "100%", padding: 16, borderRadius: 14, border: "none", background: H.blue, color: "#fff", fontSize: 15, fontWeight: 750, cursor: "pointer", marginBottom: 18 }}>+ Neues Workout starten</button>
+            <button onClick={startWorkout} className="press" style={{ ...primaryBtn, marginBottom: 18 }}>Neues Workout starten</button>
             {data.workouts.length === 0 && <div style={{ color: H.faint, fontSize: 13.5, textAlign: "center", padding: "18px 0" }}>Noch keine Workouts. Starte oben dein erstes.</div>}
             {(() => {
               const sorted = [...data.workouts].sort((a, b) => b.date.localeCompare(a.date));
@@ -758,7 +730,7 @@ function Training({ data, commit, active, setActive }) {
                 <div key={g.key}>
                   <Label style={{ margin: "14px 4px 8px" }}>{g.label} · {g.items.length}</Label>
                   {g.items.map((w) => { const sets = w.exercises.reduce((a, e) => a + e.sets.length, 0); const vol = w.exercises.reduce((a, e) => a + e.sets.reduce((s, x) => s + x.w * x.r, 0), 0); return (
-                    <div key={w.id} style={{ display: "flex", alignItems: "stretch", background: H.card, border: "1px solid " + H.line, borderRadius: 16, marginBottom: 9, overflow: "hidden" }}>
+                    <div key={w.id} style={{ display: "flex", alignItems: "stretch", background: H.glass, borderRadius: 16, marginBottom: 9, overflow: "hidden" }}>
                       <button onClick={() => openDetail(() => { setDetailW(w.id); setMode("wdetail"); })} style={{ all: "unset", cursor: "pointer", flex: 1, minWidth: 0, boxSizing: "border-box", padding: 16 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 15, fontWeight: 720 }}>{w.name}</span><span style={{ fontSize: 12, color: H.sub }}>{dayLabel(w.date) === "Heute" ? "Heute" : fmtShort(w.date)} <ChevronRight size={13} color={H.faint} style={{ verticalAlign: "-2px" }} /></span></div>
                         <div style={{ fontSize: 12.5, color: H.sub, marginTop: 4, display: "flex", gap: 12 }}><span><Clock size={11} style={{ verticalAlign: "-1px" }} /> {w.durationMin} min</span><span>{w.exercises.length} Üb · {sets} Sätze</span><span>{(vol / 1000).toFixed(1)} t</span></div>
@@ -889,12 +861,12 @@ function WorkoutDetail({ w, data, back, onDelete, onSave }) {
         const exs = src.exercises.map((e) => e.name + ": " + e.sets.map((x) => x.w + "×" + x.r).join(", ")).join("\n");
         return "Analysiere dieses Krafttraining vom " + src.date + ' ("' + src.name + '", ' + src.durationMin + " min, Volumen " + (vol / 1000).toFixed(1) + " t):\n" + exs + "\n\nGib eine kurze Einordnung: Satz-/Volumen-Qualität, mögliche Schwachstellen (z.B. wenig Sätze pro Muskelgruppe, Reps zu niedrig/hoch), und 1-2 konkrete Tipps für nächstes Mal.";
       }} />}
-      <button onClick={onDelete} className="press" style={{ width: "100%", marginTop: 4, padding: 12, borderRadius: 12, border: "1px solid " + H.line, background: "transparent", color: H.down, fontWeight: 650, fontSize: 13.5, cursor: "pointer" }}>Workout löschen</button>
+      <button onClick={onDelete} className="press" style={{ width: "100%", marginTop: 4, padding: 12, borderRadius: 12, border: "none", background: H.bg2, color: H.down, fontWeight: 650, fontSize: 13.5, cursor: "pointer" }}>Workout löschen</button>
     </Page>
   );
 }
 
-const restChip = { border: "1px solid " + H.line, background: H.card, color: H.text, borderRadius: 10, padding: "7px 11px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" };
+const restChip = { border: "none", background: H.bg2, color: H.text, borderRadius: 10, padding: "7px 11px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" };
 function RestTimer() {
   const [end, setEnd] = useState(null);
   const [left, setLeft] = useState(0);
@@ -911,7 +883,7 @@ function RestTimer() {
     </div>
   );
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, background: H.blueSoft, border: "1px solid " + H.blue + "44", borderRadius: 14, padding: "10px 12px" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, background: H.blueSoft, border: "none", borderRadius: 14, padding: "10px 12px" }}>
       <Clock size={16} color={H.blue} />
       <span style={{ fontSize: 20, fontWeight: 800, color: H.blue, fontVariantNumeric: "tabular-nums", minWidth: 56 }}>{mm}:{ss}</span>
       <div style={{ flex: 1 }} />
@@ -961,7 +933,7 @@ function ActiveWorkout({ active, setActive, openPicker, finish, data }) {
           <input value={ex.note} onChange={(e) => updEx(i, (x) => ({ ...x, note: e.target.value }))} placeholder="Notiz …" className="fld" style={{ width: "100%", marginTop: 9, padding: "10px 12px", borderRadius: 11, border: "1px solid transparent", background: H.bg2, color: H.text, fontSize: 13, boxSizing: "border-box", outline: "none" }} />
         </Card>
       ); })}
-      <button onClick={openPicker} className="press" style={{ width: "100%", padding: 14, borderRadius: 14, border: "1px solid " + H.blue, background: H.blueSoft, color: H.blue, fontSize: 14, fontWeight: 750, cursor: "pointer" }}>+ Übung hinzufügen</button>
+      <button onClick={openPicker} className="press" style={{ width: "100%", padding: 14, borderRadius: 14, border: "none", background: H.blueSoft, color: H.blue, fontSize: 14, fontWeight: 750, cursor: "pointer" }}>+ Übung hinzufügen</button>
     </>
   );
 }
@@ -982,7 +954,7 @@ function SetTable({ sets, onChange, last, hist, pos }) {
         <input value={s.r} onChange={(e) => upd(i, "r", e.target.value)} inputMode="numeric" placeholder={lp ? String(lp.r) : "Wdh"} className="fld" style={{ ...numStyle, color: rCol || numStyle.color }} />
         <button onClick={() => del(i)} className="press" style={{ all: "unset", cursor: "pointer", textAlign: "center", color: H.faint, fontSize: 17 }}>×</button>
       </div>); })}
-    <button onClick={add} className="addset" style={{ width: "100%", marginTop: 9, padding: 10, borderRadius: 11, border: "1px solid " + H.line, background: "transparent", cursor: "pointer", color: H.blue, fontSize: 13, fontWeight: 700 }}>+ Satz</button>
+    <button onClick={add} className="addset" style={{ width: "100%", marginTop: 9, padding: 10, borderRadius: 11, border: "none", background: H.bg2, cursor: "pointer", color: H.blue, fontSize: 13, fontWeight: 700 }}>+ Satz</button>
   </>);
 }
 const numStyle = { width: "100%", padding: "10px", borderRadius: 10, border: "1px solid transparent", background: H.bg2, color: H.text, fontSize: 16, fontWeight: 700, textAlign: "center", outline: "none", boxSizing: "border-box", fontVariantNumeric: "tabular-nums" };
@@ -994,10 +966,10 @@ function Library({ data, open, createEx, del, editEx }) {
   return (<>
     <div style={{ position: "relative", marginBottom: 12 }}><Search size={15} color={H.faint} style={{ position: "absolute", left: 12, top: 12 }} />
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Übung suchen" className="fld" style={{ width: "100%", padding: "10px 12px 10px 34px", borderRadius: 12, border: "1px solid transparent", background: H.bg2, color: H.text, fontSize: 14, boxSizing: "border-box", outline: "none" }} /></div>
-    <button onClick={() => setCreating(true)} style={{ width: "100%", padding: 13, borderRadius: 12, border: "1px solid " + H.blue, background: H.blueSoft, color: H.blue, fontWeight: 750, fontSize: 14, cursor: "pointer", marginBottom: 14 }}>+ Neue Übung erstellen</button>
+    <button onClick={() => setCreating(true)} style={{ width: "100%", padding: 13, borderRadius: 12, border: "none", background: H.blueSoft, color: H.blue, fontWeight: 750, fontSize: 14, cursor: "pointer", marginBottom: 14 }}>+ Neue Übung erstellen</button>
     {list.length === 0 && <div style={{ fontSize: 13.5, color: H.faint, textAlign: "center", padding: "18px 0" }}>Keine Übungen. Erstelle oben deine erste.</div>}
     {list.map((ex) => (
-      <div key={ex.id} style={{ display: "flex", alignItems: "stretch", background: H.card, border: "1px solid " + H.line, borderRadius: 14, marginBottom: 9, overflow: "hidden" }}>
+      <div key={ex.id} style={{ display: "flex", alignItems: "stretch", background: H.glass, borderRadius: 14, marginBottom: 9, overflow: "hidden" }}>
         <button onClick={() => open(ex)} style={{ all: "unset", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", flex: 1, boxSizing: "border-box", padding: "14px 8px 14px 16px", minWidth: 0 }}>
           <div><div style={{ fontSize: 15.5, fontWeight: 700 }}>{ex.name} {ex.custom && <span style={{ fontSize: 10, color: H.blue, border: "1px solid " + H.blue, borderRadius: 5, padding: "1px 5px", marginLeft: 4 }}>eigen</span>}</div>
             <div style={{ fontSize: 12, color: H.faint, marginTop: 2 }}>{ex.group}{ex.gym && " · "}{ex.gym && <span><MapPin size={10} style={{ verticalAlign: "-1px" }} /> {ex.gym}</span>}</div></div>
@@ -1025,7 +997,7 @@ function ExercisePicker({ data, onPick, onCreate, close }) {
   const list = data.exercises.filter((e) => e.name.toLowerCase().includes(q.toLowerCase())).sort((a, b) => a.name.localeCompare(b.name, "de"));
   return (<Sheet close={close} title="Übung hinzufügen">
     <div style={{ position: "relative", marginBottom: 12 }}><Search size={15} color={H.faint} style={{ position: "absolute", left: 12, top: 12 }} /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Suchen" className="fld" style={{ ...sheetInput, paddingLeft: 34 }} /></div>
-    <button onClick={() => setCreating(true)} style={{ width: "100%", padding: 11, borderRadius: 11, border: "1px solid " + H.blue, background: H.blueSoft, color: H.blue, fontWeight: 700, fontSize: 13.5, cursor: "pointer", marginBottom: 12 }}>+ Neue Übung erstellen</button>
+    <button onClick={() => setCreating(true)} style={{ width: "100%", padding: 11, borderRadius: 11, border: "none", background: H.blueSoft, color: H.blue, fontWeight: 700, fontSize: 13.5, cursor: "pointer", marginBottom: 12 }}>+ Neue Übung erstellen</button>
     <div style={{ maxHeight: 280, overflowY: "auto" }} className="scroll">{list.map((ex) => (
       <button key={ex.id} onClick={() => onPick(ex)} style={{ all: "unset", cursor: "pointer", display: "block", width: "100%", boxSizing: "border-box", background: H.bg2, borderRadius: 11, padding: "12px 14px", marginBottom: 7 }}>
         <div style={{ fontSize: 14.5, fontWeight: 650 }}>{ex.name}</div><div style={{ fontSize: 11.5, color: H.faint, marginTop: 1 }}>{ex.group}{ex.gym && " · " + ex.gym}</div></button>))}</div>
@@ -1045,7 +1017,7 @@ function Detail({ ex, sess, context, back, onSave, onDelete }) {
   let bestSetStr = "—";
   if (sess.length) { let bv = -1; for (const s of sess) for (const x of s.sets) { const e = e1rm(x.w, x.r); if (e > bv) { bv = e; bestSetStr = x.w + "×" + x.r; } } }
   const totalVol = sess.reduce((a, s) => a + s.sets.reduce((ss, x) => ss + x.w * x.r, 0), 0);
-  const insight = buildInsight(sess, context); const recent = [...sess].reverse().slice(0, 6);
+  const recent = [...sess].reverse().slice(0, 6);
   const askDelete = () => { if (typeof window !== "undefined" && !window.confirm("Übung „" + ex.name + "“ löschen? (Bereits geloggte Trainings bleiben erhalten.)")) return; onDelete && onDelete(); };
   const editAction = (onSave || onDelete) ? (
     <div style={{ display: "flex", gap: 8 }}>
@@ -1055,10 +1027,9 @@ function Detail({ ex, sess, context, back, onSave, onDelete }) {
   ) : null;
   const cmini = (c, dd) => {
     const items = [];
-    if (c && c.sleep != null) items.push(["Schlaf", c.sleep + " h", c.sleep >= 7]);
-    if (c && c.rhf != null) items.push(["Ruhepuls", c.rhf + " bpm", c.rhf <= 52]);
+    // Nur noch Tagesaktivität (Schlaf/Ruhepuls/Gewicht werden nicht mehr getrackt).
     const a = actOf({ context, activityAdj: {} }, dd); if (a != null) items.push(["Aktiv", a + " kcal", null]);
-    if (c && c.weight != null) items.push(["Gewicht", c.weight + " kg", null]);
+    if (c && c.steps != null) items.push(["Schritte", Math.round(c.steps).toLocaleString("de-DE"), null]);
     return items;
   };
   return (
@@ -1076,7 +1047,6 @@ function Detail({ ex, sess, context, back, onSave, onDelete }) {
           <Stat label="Volumen ges." value={(totalVol / 1000).toFixed(1) + " t"} />
         </div>
         <Card style={{ marginBottom: 14, padding: "16px 10px 6px" }}><Label style={{ padding: "0 6px 4px" }}>Verlauf · geschätztes 1RM · wischen</Label><Chart points={points} /></Card>
-        {insight && <div style={{ background: H.blueSoft, border: "1px solid " + H.blue + "44", borderRadius: 16, padding: 16, marginBottom: 14 }}><Label style={{ color: H.blue }}>Kontext-Analyse</Label><div style={{ fontSize: 14, lineHeight: 1.55 }}>Deine starken Sessions hängen zusammen mit <b>{insight.join(", ")}</b>.{tr.dir === "down" && " Der aktuelle Einbruch passt ins selbe Muster — zuerst Schlaf & Erholung checken."}</div></div>}
         <Label style={{ margin: "0 4px 8px" }}>Letzte Sessions</Label>
         {recent.map((s, i) => { const c = context[s.date]; const minis = cmini(c, s.date); return (
           <Card key={i} style={{ marginBottom: 9 }}>
@@ -1149,7 +1119,7 @@ function Food({ data, commit }) {
             <button onClick={() => delItem(k, i)} className="press" style={{ all: "unset", cursor: "pointer", color: H.faint, fontSize: 18, paddingLeft: 10 }}>×</button>
           </Card>
         ))}
-        <button onClick={() => setAddTo(k)} className="press" style={{ width: "100%", marginTop: 8, padding: 14, borderRadius: 14, border: "none", background: H.grad, color: "#fff", fontSize: 15, fontWeight: 750, cursor: "pointer", boxShadow: "0 8px 22px -8px " + H.blueGlow }}>+ Zu {label} hinzufügen</button>
+        <button onClick={() => setAddTo(k)} className="press" style={{ ...primaryBtn, marginTop: 8 }}>Zu {label} hinzufügen</button>
         {overlays}
       </Page>
     );
@@ -1158,22 +1128,22 @@ function Food({ data, commit }) {
   return (
     <Page title="Ernährung" action={<button onClick={() => setShowSet(true)} style={iconBtn} title="Ziele einstellen"><Settings size={19} color={H.sub} /></button>}>
       <div onTouchStart={onTS} onTouchEnd={onTE}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, background: H.card, border: "1px solid " + H.line, borderRadius: 12, padding: "8px 6px" }}>
-          <button onClick={() => setDate((d) => shiftDate(d, -1))} style={navBtn}><ChevronLeft size={20} color={H.sub} /></button>
-          <span style={{ fontSize: 14.5, fontWeight: 700 }}>{dayLabel(date)}</span>
-          <button onClick={() => setDate((d) => shiftDate(d, 1))} style={navBtn}><ChevronRight size={20} color={H.sub} /></button>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, padding: "0 2px" }}>
+          <button onClick={() => setDate((d) => shiftDate(d, -1))} className="press" aria-label="Vorheriger Tag" style={navBtn}><ChevronLeft size={24} /></button>
+          <span style={{ fontSize: 17, fontWeight: 600 }}>{dayLabel(date)}</span>
+          <button onClick={() => setDate((d) => shiftDate(d, 1))} className="press" aria-label="Nächster Tag" style={navBtn}><ChevronRight size={24} /></button>
         </div>
 
         {/* energy balance */}
         <Card style={{ marginBottom: 14 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
-              <div style={{ fontSize: 11, letterSpacing: 1, textTransform: "uppercase", color: H.faint, fontWeight: 700 }}>Energiebilanz</div>
-              <div style={{ fontSize: 30, fontWeight: 820, letterSpacing: -0.5, fontVariantNumeric: "tabular-nums", color: bilanz >= 0 ? H.amber : H.blue, marginTop: 2 }}>{bilanz >= 0 ? "+" : "−"}{Math.abs(bilanz)}<span style={{ fontSize: 14, color: H.sub, fontWeight: 600 }}> kcal {bilanz >= 0 ? "Überschuss" : "Defizit"}</span></div>
+              <div style={{ fontSize: 13, color: H.sub, fontWeight: 600 }}>Energiebilanz</div>
+              <div style={{ fontFamily: H.round, fontSize: 32, fontWeight: 600, letterSpacing: "-0.01em", fontVariantNumeric: "tabular-nums", color: bilanz >= 0 ? H.amber : H.blue, marginTop: 2 }}>{bilanz >= 0 ? "+" : "−"}{Math.abs(bilanz)}<span style={{ fontSize: 14, color: H.sub, fontWeight: 600 }}> kcal {bilanz >= 0 ? "Überschuss" : "Defizit"}</span></div>
             </div>
             <Donut eaten={sum.k} total={verbrauch} />
           </div>
-          <div style={{ display: "flex", gap: 0, marginTop: 14, paddingTop: 12, borderTop: "1px solid " + H.line }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", rowGap: 12, columnGap: 12, marginTop: 14, paddingTop: 12, borderTop: "0.5px solid " + H.line }}>
             <Bal label="Gegessen" v={sum.k} />
             <Bal label="Grundumsatz" v={set.bmr} sub="fix" />
             <Bal label="Aktivität" v={act != null ? act : "—"} sub="Coros" />
@@ -1191,17 +1161,17 @@ function Food({ data, commit }) {
         {MEALS.map(([k, label]) => { const items = day[k] || []; const ms = items.reduce((a, m) => ({ p: a.p + m.p, f: a.f + m.f, c: a.c + m.c, k: a.k + m.k }), { p: 0, f: 0, c: 0, k: 0 }); return (
           <Card key={k} style={{ marginBottom: 11 }}>
             <div onClick={() => setMealView(k)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: items.length ? 8 : 0, cursor: "pointer" }}>
-              <span style={{ fontSize: 15, fontWeight: 720, display: "flex", alignItems: "center", gap: 5 }}>{label}<ChevronRight size={15} color={H.faint} /></span>
+              <span style={{ fontSize: 17, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>{label}<ChevronRight size={16} color={H.faint} /></span>
               <span style={{ fontSize: 12, color: H.faint, fontVariantNumeric: "tabular-nums", textAlign: "right" }}>
                 {items.length ? <span style={{ marginRight: 8 }}>{Math.round(ms.p)}P · {Math.round(ms.f)}F · {Math.round(ms.c)}K</span> : null}{Math.round(ms.k)} kcal
               </span>
             </div>
             {items.map((m, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderTop: "1px solid " + H.line }}>
-                <div onClick={() => setEdit({ meal: k, idx: i })} style={{ flex: 1, cursor: "pointer" }}><span style={{ fontSize: 13.5 }}>{m.n}{m.ai && <Sparkles size={11} color={H.blue} style={{ marginLeft: 5 }} />}</span><div style={{ fontSize: 11, color: H.faint, fontVariantNumeric: "tabular-nums", marginTop: 1 }}>{m.p}P · {m.f}F · {m.c}K · {m.k} kcal</div></div>
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderTop: "0.5px solid " + H.line }}>
+                <div onClick={() => setEdit({ meal: k, idx: i })} style={{ flex: 1, cursor: "pointer" }}><span style={{ fontSize: 15 }}>{m.n}{m.ai && <Sparkles size={11} color={H.blue} style={{ marginLeft: 5 }} />}</span><div style={{ fontSize: 11, color: H.faint, fontVariantNumeric: "tabular-nums", marginTop: 1 }}>{m.p}P · {m.f}F · {m.c}K · {m.k} kcal</div></div>
                 <button onClick={() => delItem(k, i)} style={{ all: "unset", cursor: "pointer", color: H.faint, fontSize: 16, paddingLeft: 8 }}>×</button>
               </div>))}
-            <button onClick={() => setAddTo(k)} style={{ width: "100%", marginTop: 9, padding: 9, borderRadius: 10, border: "1px dashed " + H.line, background: "transparent", color: H.sub, fontSize: 13, fontWeight: 650, cursor: "pointer" }}>+ Hinzufügen</button>
+            <button onClick={() => setAddTo(k)} className="press" style={{ all: "unset", boxSizing: "border-box", width: "100%", display: "flex", alignItems: "center", gap: 6, marginTop: items.length ? 0 : 4, padding: "10px 0 0", borderTop: items.length ? "0.5px solid " + H.line : "none", color: H.blue, fontSize: 15, fontWeight: 500, cursor: "pointer" }}><Plus size={18} /> Hinzufügen</button>
           </Card>); })}
         {all.length > 0 && <div style={{ marginTop: 6 }}><AiAnalysis title="Ernährungs-Analyse" cta="KI: Tag auswerten" prompt={() => {
           const items = MEALS.map(([k, label]) => { const it = day[k] || []; return it.length ? label + ": " + it.map((m) => m.n + " (" + m.k + "kcal " + m.p + "P " + m.f + "F " + m.c + "K)").join(", ") : null; }).filter(Boolean).join("\n");
@@ -1215,16 +1185,15 @@ function Food({ data, commit }) {
   );
 }
 const MacroTile = ({ label, v, unit, color, accent }) => (
-  <div className={accent ? "" : "glass"} style={{ background: accent ? H.grad : H.glass, border: accent ? "none" : "1px solid " + H.glassLine, borderRadius: 18, padding: "16px 16px 15px", boxShadow: accent ? "0 8px 24px -8px " + H.blueGlow : "none" }}>
-    <div style={{ fontSize: 10.5, letterSpacing: 0.6, textTransform: "uppercase", fontWeight: 700, color: accent ? "rgba(255,255,255,.8)" : H.faint }}>{label}</div>
-    <div style={{ fontSize: 30, fontWeight: 820, letterSpacing: -1, marginTop: 4, fontVariantNumeric: "tabular-nums", color: accent ? "#fff" : (color || H.text), lineHeight: 1 }}>{v}<span style={{ fontSize: 13, fontWeight: 650, color: accent ? "rgba(255,255,255,.7)" : H.sub }}> {unit}</span></div>
+  <div style={{ background: H.glass, borderRadius: 14, padding: "12px 14px 13px" }}>
+    <div style={{ fontSize: 13, fontWeight: 600, color: accent ? H.blue : (color || H.sub) }}>{label}</div>
+    <div style={{ fontFamily: H.round, fontSize: 28, fontWeight: 600, letterSpacing: "-0.01em", marginTop: 3, fontVariantNumeric: "tabular-nums", color: H.text, lineHeight: 1.1 }}>{v}<span style={{ fontSize: 15, fontWeight: 600, color: H.sub }}> {unit}</span></div>
   </div>
 );
 const Bal = ({ label, v, sub, strong }) => (
-  <div style={{ flex: 1 }}>
-    <div style={{ fontSize: 10, color: H.faint, textTransform: "uppercase", letterSpacing: 0.3, fontWeight: 700 }}>{label}</div>
-    <div style={{ fontSize: 15, fontWeight: 800, marginTop: 3, fontVariantNumeric: "tabular-nums", color: strong ? H.text : H.sub }}>{v}</div>
-    {sub && <div style={{ fontSize: 9.5, color: H.faint }}>{sub}</div>}
+  <div style={{ minWidth: 0 }}>
+    <div style={{ fontSize: 12.5, color: H.sub, fontWeight: 500 }}>{label}{sub && <span style={{ color: H.faint }}> · {sub}</span>}</div>
+    <div style={{ fontFamily: H.round, fontSize: 19, fontWeight: 600, marginTop: 1, fontVariantNumeric: "tabular-nums", color: strong ? H.text : "rgba(235,235,245,0.85)" }}>{v}</div>
   </div>
 );
 function Donut({ eaten, total }) {
@@ -1246,7 +1215,7 @@ function NutSettings({ set, onSave, close }) {
     <div style={{ height: 1, background: H.line, margin: "16px 0" }} />
     <SetPassword />
     <form action="/auth/signout" method="post" style={{ marginTop: 10 }}>
-      <button type="submit" style={{ width: "100%", padding: 12, borderRadius: 13, border: "1px solid " + H.line, background: "transparent", color: H.sub, fontWeight: 650, fontSize: 13.5, cursor: "pointer" }}>Abmelden</button>
+      <button type="submit" style={{ width: "100%", padding: 12, borderRadius: 13, border: "none", background: H.bg2, color: H.sub, fontWeight: 650, fontSize: 13.5, cursor: "pointer" }}>Abmelden</button>
     </form>
   </Sheet>);
 }
@@ -1297,7 +1266,7 @@ function BarcodeScanner({ onDetected, onClose }) {
       </div>
       {err && <div style={{ fontSize: 12.5, color: H.down, marginTop: 8 }}>{err}</div>}
       <div style={{ fontSize: 12, color: H.sub, textAlign: "center", marginTop: 8 }}>Barcode ins Bild halten …</div>
-      <button onClick={onClose} style={{ width: "100%", marginTop: 10, padding: 12, borderRadius: 12, border: "1px solid " + H.line, background: "transparent", color: H.sub, fontWeight: 650, fontSize: 13.5, cursor: "pointer" }}>Abbrechen</button>
+      <button onClick={onClose} style={{ width: "100%", marginTop: 10, padding: 12, borderRadius: 12, border: "none", background: H.bg2, color: H.sub, fontWeight: 650, fontSize: 13.5, cursor: "pointer" }}>Abbrechen</button>
     </div>
   );
 }
@@ -1323,7 +1292,7 @@ function EditFood({ entry, onSave, onDelete, close }) {
       <Stat label="KH" value={sc(base.c) + " g"} />
     </div>
     <button onClick={save} style={{ width: "100%", padding: 14, borderRadius: 13, border: "none", background: H.blue, color: "#fff", fontWeight: 750, fontSize: 15, cursor: "pointer" }}>Speichern</button>
-    <button onClick={onDelete} style={{ width: "100%", marginTop: 8, padding: 12, borderRadius: 12, border: "1px solid " + H.line, background: "transparent", color: H.down, fontWeight: 650, fontSize: 13.5, cursor: "pointer" }}>Löschen</button>
+    <button onClick={onDelete} style={{ width: "100%", marginTop: 8, padding: 12, borderRadius: 12, border: "none", background: H.bg2, color: H.down, fontWeight: 650, fontSize: 13.5, cursor: "pointer" }}>Löschen</button>
   </Sheet>);
 }
 
@@ -1437,8 +1406,8 @@ function AddFood({ mealLabel, onAdd, close, data, commit }) {
   return (<Sheet close={close} title={title} full={mode === "search" || mode === "scan"}>
     {mode === "search" && <>
       <div style={{ display: "flex", gap: 8, marginBottom: 10, flexShrink: 0 }}>
-        <button onClick={() => setMode("scan")} style={{ flex: 1, padding: 12, borderRadius: 12, border: "1px solid " + H.blue, background: H.blueSoft, color: H.blue, fontWeight: 750, fontSize: 13.5, cursor: "pointer" }}>📷 Barcode scannen</button>
-        <button onClick={() => { setForm(blankForm); setMode("create"); }} style={{ flex: 1, padding: 12, borderRadius: 12, border: "1px solid " + H.line, background: H.bg2, color: H.text, fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>+ Neues Lebensmittel</button>
+        <button onClick={() => setMode("scan")} style={{ flex: 1, padding: 12, borderRadius: 12, border: "none", background: H.blueSoft, color: H.blue, fontWeight: 750, fontSize: 13.5, cursor: "pointer" }}>📷 Barcode scannen</button>
+        <button onClick={() => { setForm(blankForm); setMode("create"); }} style={{ flex: 1, padding: 12, borderRadius: 12, border: "none", background: H.bg2, color: H.text, fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>+ Neues Lebensmittel</button>
       </div>
       <div style={{ position: "relative", marginBottom: 10, flexShrink: 0 }}><Search size={15} color={H.faint} style={{ position: "absolute", left: 12, top: 12 }} />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Lebensmittel suchen" className="fld" style={{ ...sheetInput, paddingLeft: 34 }} /></div>
@@ -1525,176 +1494,144 @@ function AddFood({ mealLabel, onAdd, close, data, commit }) {
 function Macro({ label, v, t, color }) { const pct = Math.min(100, (v / t) * 100); return (<div style={{ marginBottom: 11 }}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}><span style={{ fontSize: 13, fontWeight: 600 }}>{label}</span><span style={{ fontSize: 12, color: H.sub, fontVariantNumeric: "tabular-nums" }}>{v}<span style={{ color: H.faint }}> / {t} g</span></span></div><Bar pct={pct} color={color} /></div>); }
 
 /* ================= HOME ================= */
-function HrvPrompt({ data, commit }) {
-  const cur = hrvOf(data, today);
-  const [open, setOpen] = useState(false);
-  const [v, setV] = useState("");
-  const save = () => { const n = Math.round(dec(v)); if (!n) return; commit({ ...data, hrvLog: { ...(data.hrvLog || {}), [today]: n } }); setOpen(false); setV(""); };
-  // Wert schon da und nicht im Bearbeiten-Modus → kompakte Zeile.
-  if (cur != null && !open) return (
-    <div className="glass" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, background: H.glass, border: "1px solid " + H.glassLine, borderRadius: 14, padding: "10px 14px" }}>
-      <span style={{ fontSize: 13, color: H.sub }}>HRV heute: <b style={{ color: H.text }}>{cur} ms</b></span>
-      <div style={{ flex: 1 }} />
-      <button onClick={() => { setV(String(cur)); setOpen(true); }} className="press" style={{ all: "unset", cursor: "pointer", color: H.blue, fontSize: 12.5, fontWeight: 700 }}>ändern</button>
-    </div>
-  );
-  // Sonst: nach HRV fragen (bzw. Bearbeiten-Feld).
-  return (
-    <Card style={{ marginBottom: 14 }}>
-      <Label style={{ marginBottom: 8, color: H.blue }}><Sparkles size={12} style={{ verticalAlign: "-2px" }} /> Morgen-Check</Label>
-      <div style={{ fontSize: 14, marginBottom: 10 }}>Wie ist deine HRV heute? (aus Coros/Health, in ms) — fließt direkt in deinen Readiness-Score ein.</div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <input value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") save(); }} inputMode="numeric" placeholder="z.B. 68" className="fld" style={{ flex: 1, padding: "12px 14px", borderRadius: 12, border: "1px solid transparent", background: H.bg2, color: H.text, fontSize: 16, fontWeight: 700, boxSizing: "border-box", outline: "none" }} />
-        <button onClick={save} disabled={!dec(v)} className="press" style={{ flexShrink: 0, padding: "0 20px", borderRadius: 12, border: "none", background: dec(v) ? H.grad : H.card, color: dec(v) ? "#fff" : H.faint, fontWeight: 750, fontSize: 14, cursor: dec(v) ? "pointer" : "default" }}>Speichern</button>
-      </div>
-    </Card>
-  );
-}
-function SyncButton({ reload }) {
-  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState("");
+// Coros-Sync als kompakte Kapsel (Toolbar-Stil); Status meldet die Übersicht.
+function SyncButton({ reload, onStatus }) {
+  const [busy, setBusy] = useState(false);
   const go = async () => {
-    if (busy) return; setBusy(true); setMsg("");
+    if (busy) return; setBusy(true); onStatus && onStatus(null);
+    let st;
     try {
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), 90000); // nicht ewig hängen
       const res = await fetch("/api/coros/sync", { method: "POST", credentials: "same-origin", signal: ctrl.signal });
       clearTimeout(t);
       let r = null; try { r = await res.json(); } catch (e) { /* keine JSON-Antwort (z.B. Timeout-Seite) */ }
-      if (res.ok && r && r.ok) { setMsg("Aktualisiert ✓"); if (reload) await reload(); }
-      else if (r && r.error === "coros_not_connected") setMsg("Coros neu verbinden");
-      else setMsg("Fehlgeschlagen (" + (res.status !== 200 ? "HTTP " + res.status : (r && r.error) || "?") + ")");
+      if (res.ok && r && r.ok) { st = { text: "Mit Coros synchronisiert", tone: "ok" }; if (reload) await reload(); }
+      else if (r && r.error === "coros_not_connected") st = { text: "Coros-Verbindung abgelaufen – tippen zum Erneuern", tone: "reauth" };
+      else st = { text: "Sync fehlgeschlagen (" + (res.status !== 200 ? "HTTP " + res.status : (r && r.error) || "?") + ")", tone: "err" };
     } catch (e) {
-      setMsg(e && e.name === "AbortError" ? "Timeout – nochmal versuchen" : "Netzwerkfehler – nochmal versuchen");
+      st = { text: e && e.name === "AbortError" ? "Zeitüberschreitung – nochmal versuchen" : "Netzwerkfehler – nochmal versuchen", tone: "err" };
     }
-    setBusy(false); setTimeout(() => setMsg(""), 5000);
+    setBusy(false); onStatus && onStatus(st);
+    if (st.tone === "ok") setTimeout(() => onStatus && onStatus(null), 3500);
   };
   return (
-    <button onClick={go} disabled={busy} className="press" style={{ width: "100%", marginBottom: 14, padding: 12, borderRadius: 13, border: "1px solid " + H.glassLine, background: H.glass, color: H.text, fontWeight: 700, fontSize: 13.5, cursor: busy ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-      <RefreshCw size={15} color={H.blue} className={busy ? "spin" : ""} /> {busy ? "Synchronisiere mit Coros …" : (msg || "Coros jetzt synchronisieren")}
+    <button onClick={go} disabled={busy} className="press" aria-label="Mit Coros synchronisieren" style={{ all: "unset", cursor: busy ? "default" : "pointer", display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 999, background: H.bg2, color: H.blue, fontSize: 15, fontWeight: 600 }}>
+      <RefreshCw size={15} strokeWidth={2.4} className={busy ? "spin" : ""} /> {busy ? "Sync …" : "Sync"}
     </button>
   );
 }
-function Home({ data, commit, reload }) {
+// Zwei konzentrische Ringe (Apple-Aktivitätsringe): außen Kalorien, innen Protein.
+function DualRing({ outer, inner, size = 112 }) {
+  const w = 13, c0 = size / 2;
+  const ring = (r, p, col) => {
+    const c = 2 * Math.PI * r, pc = Math.max(0, Math.min(1, p || 0));
+    return (<g key={r}>
+      <circle cx={c0} cy={c0} r={r} fill="none" stroke={col} strokeOpacity="0.2" strokeWidth={w} />
+      <circle cx={c0} cy={c0} r={r} fill="none" stroke={col} strokeWidth={w} strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - pc)} transform={"rotate(-90 " + c0 + " " + c0 + ")"} style={{ transition: "stroke-dashoffset .9s cubic-bezier(.32,.72,0,1)" }} />
+    </g>);
+  };
+  return <svg width={size} height={size} viewBox={"0 0 " + size + " " + size} style={{ flexShrink: 0 }} aria-hidden>{ring(c0 - w / 2 - 1, outer.p, outer.col)}{ring(c0 - w * 1.5 - 4, inner.p, inner.col)}</svg>;
+}
+const RingRow = ({ label, col, v, t, unit }) => (
+  <div style={{ marginBottom: 8 }}>
+    <div style={{ fontSize: 13, fontWeight: 600, color: col }}>{label}</div>
+    <div style={{ fontFamily: H.round, fontVariantNumeric: "tabular-nums", lineHeight: 1.15 }}>
+      <span style={{ fontSize: 22, fontWeight: 600, color: H.text }}>{v}</span>
+      <span style={{ fontSize: 15, fontWeight: 600, color: H.sub }}>/{t} {unit}</span>
+    </div>
+  </div>
+);
+const LOAD_DE = { optimized: "Optimal", optimal: "Optimal", maintaining: "Erhaltend", recovery: "Erholung", overreaching: "Hoch", high: "Hoch", detraining: "Zu wenig", low: "Niedrig" };
+
+function Home({ data, reload, goTrain }) {
   const set = data.settings; const ctx = data.context[today] || {}; const nut = data.nutrition[today] || emptyDay();
   const eaten = [].concat(...MEALS.map(([k]) => nut[k] || [])).reduce((a, m) => ({ p: a.p + m.p, k: a.k + m.k }), { p: 0, k: 0 });
   const act = actOf(data, today);
   const verbrauch = set.bmr + (act || 0);
   const pLeft = Math.max(0, set.protein - eaten.p); const kLeft = verbrauch - eaten.k;
   const lastW = (data.workouts || [])[data.workouts.length - 1] || null;
-  const dash = (v, suf = "") => (v == null || v === "" ? "—" : v + suf);
-  const rd = readiness(data);
   const h = new Date().getHours();
   const greet = (h < 11 ? "Guten Morgen" : h < 18 ? "Guten Tag" : "Guten Abend") + ", Felix";
   const dateStr = new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
-  const sumParts = [];
-  if (rd.has) sumParts.push("Readiness " + rd.score);
-  sumParts.push(pLeft > 0 ? "noch " + pLeft + " g Protein" : "Protein-Ziel ✓");
-  if (act != null) sumParts.push(kLeft >= 0 ? kLeft + " kcal übrig" : Math.abs(kLeft) + " kcal drüber");
-  const summary = sumParts.join("  ·  ");
-  const c0 = data.coros || {}; const rec = c0.recovery; const fit = c0.fitness; const load = c0.load;
+  const summary = [pLeft > 0 ? "noch " + pLeft + " g Protein" : "Protein-Ziel erreicht", act != null ? (kLeft >= 0 ? kLeft.toLocaleString("de-DE") + " kcal übrig" : Math.abs(kLeft).toLocaleString("de-DE") + " kcal drüber") : null].filter(Boolean).join(" · ");
+  const c0 = data.coros || {}; const fit = c0.fitness; const load = c0.load;
   const expDays = c0.access_expires ? Math.floor((c0.access_expires - Date.now()) / 864e5) : null;
   const needReauth = expDays != null && expDays <= 5;
+  const [status, setStatus] = useState(null);
 
   // Verlaufs-Graph pro Kachel: Messpunkte einer Metrik über alle Tage (aufsteigend).
   const [hist, setHist] = useState(null);
   const ptsOf = (key) => Object.keys(data.context || {}).filter((d) => typeof (data.context[d] || {})[key] === "number").sort().map((d) => ({ date: d, val: data.context[d][key] }));
   const actPts = () => Array.from(new Set([...Object.keys(data.context || {}), ...Object.keys(data.activityAdj || {})])).sort().map((d) => ({ date: d, val: actOf(data, d) })).filter((p) => typeof p.val === "number");
   const int0 = (v) => Math.round(v).toLocaleString("de-DE");
+  const ST = ({ children }) => <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.01em", margin: "28px 2px 10px" }}>{children}</div>;
+  const toneCol = (t) => (t === "ok" ? H.up : t === "err" ? H.down : H.amber);
+  const lastVol = lastW ? lastW.exercises.reduce((a, e) => a + e.sets.reduce((s, x) => s + x.w * x.r, 0), 0) : 0;
 
   return (
-    <Page title={greet} subEl={<div>
-      <div style={{ fontSize: 13, color: H.faint }}>{dateStr}</div>
-      <div style={{ fontSize: 14, color: H.sub, marginTop: 3, fontWeight: 600 }}>{summary}</div>
-    </div>}>
-      <SyncButton reload={reload} />
-      {needReauth && (
-        <a href="/api/coros/connect" style={{ textDecoration: "none", display: "block", marginBottom: 14 }}>
-          <div className="press" style={{ background: H.amber + "22", border: "1px solid " + H.amber + "66", borderRadius: 14, padding: "12px 14px", display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 18 }}>🔗</span>
+    <div style={{ padding: "8px 16px 8px" }}>
+      <div style={{ height: 14 }} />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: H.sub, textTransform: "uppercase", letterSpacing: "0.02em" }}>{dateStr}</div>
+        <SyncButton reload={reload} onStatus={setStatus} />
+      </div>
+      <h1 style={{ fontSize: 34, fontWeight: 700, letterSpacing: "-0.012em", lineHeight: 1.12, margin: "6px 0 0" }}>{greet}</h1>
+      <div style={{ fontSize: 15, color: H.sub, marginTop: 4 }}>{summary}</div>
+      {status && (status.tone === "reauth"
+        ? <a href="/api/coros/connect" style={{ display: "block", marginTop: 8, fontSize: 14, color: H.amber, fontWeight: 600, textDecoration: "none" }}>{status.text} ›</a>
+        : <div style={{ marginTop: 8, fontSize: 14, color: toneCol(status.tone), fontWeight: 600 }}>{status.text}</div>)}
+      {needReauth && !status && (
+        <a href="/api/coros/connect" style={{ textDecoration: "none", display: "block", marginTop: 14 }}>
+          <Card className="press" style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px" }}>
+            <RefreshCw size={18} color={H.amber} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 750, color: H.text }}>Coros-Verbindung {expDays <= 0 ? "abgelaufen" : "läuft in " + expDays + " Tag" + (expDays === 1 ? "" : "en") + " ab"}</div>
-              <div style={{ fontSize: 12, color: H.sub }}>Tippen zum Erneuern (10 Sek.)</div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: H.text }}>Coros-Verbindung {expDays <= 0 ? "abgelaufen" : "läuft in " + expDays + " Tag" + (expDays === 1 ? "" : "en") + " ab"}</div>
+              <div style={{ fontSize: 13, color: H.sub }}>Tippen zum Erneuern</div>
             </div>
-            <ChevronRight size={16} color={H.amber} />
-          </div>
+            <ChevronRight size={18} color={H.faint} />
+          </Card>
         </a>
       )}
-      {rd.has && (
-        <Card style={{ marginBottom: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <Ring score={rd.score} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <Label style={{ marginBottom: 4 }}>Readiness heute</Label>
-              <div style={{ fontSize: 15, fontWeight: 750, lineHeight: 1.25 }}>{rd.label}</div>
-              <div style={{ display: "flex", gap: 12, marginTop: 8, flexWrap: "wrap" }}>{rd.factors.map(([l, v, g], i) => <Mini key={i} label={l} v={v} good={g} />)}</div>
-            </div>
-          </div>
-          {rd.note && <div style={{ fontSize: 12.5, color: H.sub, lineHeight: 1.5, marginTop: 12, paddingTop: 12, borderTop: "1px solid " + H.line }}>ℹ️ {rd.note}</div>}
-        </Card>
-      )}
-      {(rec || (fit && fit.vo2max)) && (
-        <Card style={{ marginBottom: 14 }}>
-          <Label style={{ marginBottom: 10 }}>Coros · aktueller Zustand</Label>
-          <div style={{ display: "flex", gap: 9 }}>
-            {rec && <Stat label="Recovery" value={rec.pct + "%"} accent />}
-            {fit && fit.vo2max && <Stat label="VO₂max" value={fit.vo2max} />}
-            {fit && fit.threshold && <Stat label="Schwelle" value={fit.threshold} />}
-          </div>
-          {rec && rec.level && <div style={{ fontSize: 12.5, color: H.sub, marginTop: 10 }}>{rec.level}{rec.full ? " · voll erholt in " + rec.full : ""}</div>}
-          {load && load.short != null && <div style={{ display: "flex", gap: 12, marginTop: 10, paddingTop: 10, borderTop: "1px solid " + H.line, flexWrap: "wrap", alignItems: "center" }}>
-            <Mini label="Belastung" v={load.comment || "—"} good={load.comment === "Optimized" ? true : null} />
-            <Mini label="Load kurz/lang" v={load.short + " / " + load.long} />
-            {load.ratio && <Mini label="Ratio" v={load.ratio} good={Number(load.ratio) >= 0.8 && Number(load.ratio) <= 1.3 ? true : Number(load.ratio) > 1.5 ? false : null} />}
-          </div>}
-          {fit && (fit.pred5k || fit.predM) && (
-            <div style={{ display: "flex", gap: 12, marginTop: 10, paddingTop: 10, borderTop: "1px solid " + H.line, flexWrap: "wrap" }}>
-              {fit.pred5k && <Mini label="5 km" v={fit.pred5k} />}
-              {fit.pred10k && <Mini label="10 km" v={fit.pred10k} />}
-              {fit.predHM && <Mini label="Halbm." v={fit.predHM} />}
-              {fit.predM && <Mini label="Marathon" v={fit.predM} />}
-            </div>
-          )}
-        </Card>
-      )}
-      <Label style={{ margin: "0 4px 8px" }}>Heute · Coros{ctx.weight != null || ctx.bodyFat != null ? " · Gewicht & Körperfett: Apple Health" : ""}</Label>
-      <div style={{ display: "flex", gap: 9, marginBottom: 9 }}>
-        <Stat label="Aktiv-kcal" value={dash(act)} accent onClick={() => setHist({ title: "Aktiv-Kalorien", unit: " kcal", points: actPts(), fmt: int0 })} />
-        <Stat label="Schritte" value={ctx.steps != null ? ctx.steps.toLocaleString("de-DE") : "—"} onClick={() => setHist({ title: "Schritte", unit: "", points: ptsOf("steps"), fmt: int0 })} />
-        <Stat label="Schlaf" value={ctx.sleep != null ? de(ctx.sleep) + " h" : "—"} onClick={() => setHist({ title: "Schlaf (Stunden)", unit: " h", points: ptsOf("sleep"), fmt: de1 })} />
-      </div>
-      <div style={{ display: "flex", gap: 9, marginBottom: 9 }}>
-        <Stat label="Schlaf-Score" value={dash(ctx.sleepScore)} onClick={() => setHist({ title: "Schlaf-Score", unit: "", points: ptsOf("sleepScore"), fmt: int0 })} />
-        <Stat label="Tiefschlaf" value={ctx.sleepDeep != null ? ctx.sleepDeep + " %" : "—"} onClick={() => setHist({ title: "Tiefschlaf-Anteil", unit: " %", points: ptsOf("sleepDeep"), fmt: int0 })} />
-        <Stat label="REM" value={ctx.sleepRem != null ? ctx.sleepRem + " %" : "—"} onClick={() => setHist({ title: "REM-Anteil", unit: " %", points: ptsOf("sleepRem"), fmt: int0 })} />
-      </div>
-      <div style={{ display: "flex", gap: 9, marginBottom: 9 }}>
-        <Stat label="Ruhepuls" value={dash(ctx.rhf)} onClick={() => setHist({ title: "Ruhepuls", unit: " bpm", points: ptsOf("rhf"), fmt: int0 })} />
-        <Stat label="Ø Herzfr." value={dash(ctx.avgHr)} onClick={() => setHist({ title: "Ø-Herzfrequenz", unit: " bpm", points: ptsOf("avgHr"), fmt: int0 })} />
-        <Stat label="HRV" value={hrvOf(data, today) != null ? hrvOf(data, today) + " ms" : "—"} onClick={() => setHist({ title: "HRV", unit: " ms", points: ptsOf("hrv"), fmt: int0 })} />
-      </div>
-      <div style={{ display: "flex", gap: 9, marginBottom: 14 }}>
-        <Stat label="Gewicht" value={ctx.weight != null ? de(ctx.weight) + " kg" : "—"} onClick={() => setHist({ title: "Gewicht", unit: " kg", points: ptsOf("weight"), fmt: de1 })} />
-        <Stat label="Körperfett" value={ctx.bodyFat != null ? de1(ctx.bodyFat) + " %" : "—"} onClick={() => setHist({ title: "Körperfett", unit: " %", points: ptsOf("bodyFat"), fmt: de1 })} />
-        <div style={{ flex: 1 }} />
-      </div>
 
-      <Card style={{ marginBottom: 14 }}>
-        <Label style={{ marginBottom: 10 }}>Energiebilanz heute</Label>
-        <div style={{ display: "flex" }}>
-          <Bal label="Gegessen" v={eaten.k} />
-          <Bal label="Verbrauch" v={verbrauch} sub={act == null ? "nur Grundumsatz" : "inkl. Coros"} />
-          <Bal label={kLeft >= 0 ? "Übrig" : "Über"} v={Math.abs(kLeft)} strong />
+      <ST>Heute</ST>
+      <Card style={{ display: "flex", alignItems: "center", gap: 18, padding: "18px 16px" }}>
+        <DualRing outer={{ p: verbrauch ? eaten.k / verbrauch : 0, col: H.blue }} inner={{ p: set.protein ? eaten.p / set.protein : 0, col: H.up }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <RingRow label="Kalorien" col={H.blue} v={int0(eaten.k)} t={int0(verbrauch)} unit="kcal" />
+          <RingRow label="Protein" col={H.up} v={Math.round(eaten.p)} t={set.protein} unit="g" />
+          <div style={{ fontSize: 13, color: kLeft < 0 ? H.amber : H.sub, fontWeight: 500 }}>
+            {act == null ? "Verbrauch = Grundumsatz (noch keine Coros-Aktivität)" : kLeft >= 0 ? int0(kLeft) + " kcal übrig" : int0(-kLeft) + " kcal über Verbrauch"}
+          </div>
         </div>
       </Card>
 
-      <Label style={{ margin: "2px 4px 8px", color: H.blue }}><Dumbbell size={12} style={{ verticalAlign: "-2px" }} /> Letztes Training</Label>
-      <RecCard Icon={Dumbbell} c={H.blue} t={lastW ? (dayLabel(lastW.date) === "Heute" ? "Heute" : fmtShort(lastW.date)) + ": " + lastW.name + " · " + lastW.exercises.length + " Übungen" : "Noch kein Workout geloggt."} />
+      <ST>Aktivität</ST>
+      <div style={{ display: "flex", gap: 10 }}>
+        <Stat label="Aktiv-Kalorien" value={act != null ? int0(act) + " kcal" : "—"} accent onClick={() => setHist({ title: "Aktiv-Kalorien", unit: " kcal", points: actPts(), fmt: int0 })} />
+        <Stat label="Schritte" value={ctx.steps != null ? int0(ctx.steps) : "—"} onClick={() => setHist({ title: "Schritte", unit: "", points: ptsOf("steps"), fmt: int0 })} />
+      </div>
+      {(fit && fit.vo2max) || (load && load.short != null) ? (
+        <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+          {fit && fit.vo2max && <Stat label="VO₂max" value={fit.vo2max} />}
+          {load && load.short != null && <Stat label="Trainingsbelastung" value={(LOAD_DE[String(load.comment || "").toLowerCase()] || load.comment || "—") + (load.ratio ? " · " + String(load.ratio).replace(".", ",") : "")} color={Number(load.ratio) > 1.5 ? H.amber : undefined} />}
+        </div>
+      ) : null}
 
-      <Label style={{ margin: "14px 4px 8px", color: H.up }}><Utensils size={12} style={{ verticalAlign: "-2px" }} /> Ernährung</Label>
-      <RecCard Icon={Utensils} c={H.blue} t={pLeft > 0 ? "Noch " + pLeft + " g Protein bis zu deinem Ziel (" + set.protein + " g)." : "Protein-Ziel erreicht 💪"} />
-      <RecCard Icon={Flame} c={kLeft >= 0 ? H.up : H.amber} t={act == null ? "Sobald Coros heute synct, siehst du hier dein Kalorien-Budget." : (kLeft >= 0 ? "Noch " + kLeft + " kcal bis zum Verbrauch (" + verbrauch + " kcal)." : Math.abs(kLeft) + " kcal über deinem Verbrauch.")} />
+      <ST>Letztes Training</ST>
+      {lastW ? (
+        <Card onClick={goTrain} className="press" style={{ display: "flex", alignItems: "center", gap: 14, cursor: "pointer" }}>
+          <span style={{ width: 42, height: 42, borderRadius: 11, background: H.blueSoft, display: "grid", placeItems: "center", flexShrink: 0 }}><Dumbbell size={21} color={H.blue} /></span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 17, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{lastW.name}</div>
+            <div style={{ fontSize: 13, color: H.sub, marginTop: 2 }}>{dayLabel(lastW.date) === "Heute" ? "Heute" : fmtShort(lastW.date)} · {lastW.exercises.length} Übungen · {lastW.durationMin} min · {(lastVol / 1000).toFixed(1).replace(".", ",")} t</div>
+          </div>
+          <ChevronRight size={18} color={H.faint} />
+        </Card>
+      ) : <Card><div style={{ fontSize: 15, color: H.sub }}>Noch kein Workout geloggt.</div></Card>}
+
       {hist && <MetricHistory {...hist} close={() => setHist(null)} />}
-    </Page>
+    </div>
   );
 }
 // Verlaufs-Ansicht einer Metrik: Kennzahlen + wischbarer Graph über alle Messungen.
@@ -1724,365 +1661,39 @@ function MetricHistory({ title, unit, points, fmt, close }) {
     </Sheet>
   );
 }
-const RecCard = ({ Icon, c, t }) => <div style={{ display: "flex", gap: 11, alignItems: "flex-start", background: H.card, borderRadius: 14, border: "1px solid " + H.line, borderLeft: "3px solid " + c, padding: "13px 14px", marginBottom: 8 }}><Icon size={16} color={c} style={{ marginTop: 1, flexShrink: 0 }} /><span style={{ fontSize: 13.5, lineHeight: 1.45 }}>{t}</span></div>;
-
-/* ================= ANALYSE ================= */
-function Analyse({ data }) {
-  const set = data.settings;
-  const days = Array.from({ length: 7 }, (_, i) => dstr(i)); // heute … -6 Tage
-  const ctxOf = (d) => data.context[d] || {};
-  const nums = (key) => days.map((d) => ctxOf(d)[key]).filter((v) => typeof v === "number");
-  const sleeps = nums("sleep"); const acts = nums("activity"); const rhrs = nums("rhf");
-  const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
-  const workoutsWk = (data.workouts || []).filter((w) => days.includes(w.date));
-  const protDays = days.map((d) => { const n = data.nutrition[d]; if (!n) return null; const p = [].concat(...MEALS.map(([k]) => n[k] || [])).reduce((a, m) => a + m.p, 0); return p > 0 ? p : null; }).filter((v) => v != null);
-  const kcalDays = days.map((d) => { const n = data.nutrition[d]; if (!n) return null; const k = [].concat(...MEALS.map(([kk]) => n[kk] || [])).reduce((a, m) => a + m.k, 0); return k > 0 ? k : null; }).filter((v) => v != null);
-  const balDays = days.map((d) => { const n = data.nutrition[d]; if (!n) return null; const k = [].concat(...MEALS.map(([kk]) => n[kk] || [])).reduce((a, m) => a + m.k, 0); if (!k) return null; return k - (set.bmr + (actOf(data, d) || 0)); }).filter((v) => v != null);
-  // Gewicht: neuester & ältester Wert im Fenster
-  let curW = null, oldW = null;
-  for (const d of days) { const w = ctxOf(d).weight; if (typeof w === "number") { if (curW == null) curW = w; oldW = w; } }
-  const wChange = curW != null && oldW != null ? Math.round((curW - oldW) * 10) / 10 : null;
-  const r0 = (v) => (v == null ? "—" : Math.round(v));
-  const r1 = (v) => (v == null ? "—" : Math.round(v * 10) / 10);
-
-  const areas = [
-    { Icon: Activity, c: H.blue, l: "Training", v: workoutsWk.length + " Einh.", n: "letzte 7 Tage" },
-    { Icon: Watch, c: H.violet, l: "Schlaf", v: sleeps.length ? r1(avg(sleeps)) + " h" : "—", n: "Ø / Nacht" },
-    { Icon: Flame, c: H.up, l: "Aktiv-Energie", v: acts.length ? r0(acts.reduce((a, b) => a + b, 0)) + " kcal" : "—", n: "Summe 7 Tage" },
-    { Icon: Utensils, c: H.amber, l: "Protein", v: protDays.length ? r0(avg(protDays)) + " g" : "—", n: "Ø / erf. Tag" },
-  ];
-
-  return (
-    <Page title="Wochenauswertung" sub="Letzte 7 Tage">
-      <Label style={{ margin: "0 4px 8px" }}>Deine Daten</Label>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginBottom: 16 }}>{areas.map((a) => <Card key={a.l} style={{ padding: 13 }}><div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}><a.Icon size={14} color={a.c} /><span style={{ fontSize: 12, color: H.sub, fontWeight: 600 }}>{a.l}</span></div><div style={{ fontSize: 16, fontWeight: 750 }}>{a.v}</div><div style={{ fontSize: 11.5, color: H.faint, marginTop: 2 }}>{a.n}</div></Card>)}</div>
-
-      <Label style={{ margin: "0 4px 8px" }}>Körper & Erholung</Label>
-      <Card style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", gap: 9 }}>
-          <Stat label="Gewicht" value={curW != null ? curW + " kg" : "—"} accent />
-          <Stat label="7-Tage-Trend" value={wChange == null ? "—" : (wChange > 0 ? "+" : "") + wChange + " kg"} color={wChange != null && wChange <= 0 ? H.up : H.text} />
-          <Stat label="Ruhepuls Ø" value={rhrs.length ? r0(avg(rhrs)) : "—"} />
-        </div>
-      </Card>
-
-      <Label style={{ margin: "0 4px 8px" }}>Ernährung (Ø / erfasster Tag)</Label>
-      <Card style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", gap: 9 }}>
-          <Stat label="kcal Ø" value={kcalDays.length ? r0(avg(kcalDays)) : "—"} />
-          <Stat label="Protein Ø" value={protDays.length ? r0(avg(protDays)) + " g" : "—"} />
-          <Stat label="Bilanz Ø" value={balDays.length ? (avg(balDays) >= 0 ? "+" : "") + r0(avg(balDays)) : "—"} color={balDays.length && avg(balDays) <= 0 ? H.up : H.amber} />
-        </div>
-      </Card>
-
-      <AiAnalysis title="Wochen-Report" cta="KI: meine Woche auswerten" prompt={() => {
-        return "Erstelle einen kurzen Wochen-Report (letzte 7 Tage). Trainings: " + workoutsWk.length + ". Schlaf Ø " + (sleeps.length ? r1(avg(sleeps)) : "—") + " h. Ruhepuls Ø " + (rhrs.length ? r0(avg(rhrs)) : "—") + " bpm. Aktiv-Energie Summe " + (acts.length ? r0(acts.reduce((a, b) => a + b, 0)) : "—") + " kcal. Ernährung Ø " + (kcalDays.length ? r0(avg(kcalDays)) : "—") + " kcal / " + (protDays.length ? r0(avg(protDays)) : "—") + "g Protein, Bilanz Ø " + (balDays.length ? r0(avg(balDays)) : "—") + " kcal. Gewicht aktuell " + (curW != null ? curW + " kg" : "—") + ", 7-Tage-Trend " + (wChange == null ? "—" : (wChange > 0 ? "+" : "") + wChange + " kg") + ".\n\nGib 3-4 konkrete Beobachtungen + Fokus für nächste Woche.";
-      }} />
-
-      <div style={{ fontSize: 11.5, color: H.faint, textAlign: "center", marginTop: 4, lineHeight: 1.5 }}>Basiert auf deinen echten Health- & App-Daten der letzten 7 Tage.</div>
-    </Page>
-  );
-}
-
-/* ================= BIOLOGISCHES ALTER ================= */
-// Metrik-Katalog: ref = neutraler Referenzwert (= dein chronologisches Alter),
-// opt = erstrebenswerter Zielwert, dir = ob hoch oder niedrig besser ist,
-// span = Wertebereich für ±weight Jahre, weight = max. Einfluss in Jahren.
-// why/tips versorgen die Detailansicht mit Erklärung und Handlungstipps.
-const AGE_METRICS = [
-  { key: "vo2", label: "VO₂max", unit: "", ref: 50, opt: 57, dir: "high", span: 15, weight: 4,
-    why: "Die maximale Sauerstoffaufnahme – der stärkste Einzel-Marker für Fitness und Lebenserwartung. Ab ~30 sinkt sie normal um ca. 1 % pro Jahr.",
-    tips: ["1–2× / Woche harte Intervalle (Zone 4–5)", "Viel lockere Grundlage in Zone 2", "Regelmäßig statt in Schüben trainieren"] },
-  { key: "rhf", label: "Ruhepuls", unit: " bpm", ref: 52, opt: 45, dir: "low", span: 14, weight: 2.5,
-    why: "Puls in Ruhe (morgens). Niedriger = ein starkes, effizientes Herz. Steigt bei Stress, Alkohol, Infekt oder zu wenig Schlaf.",
-    tips: ["Mehr Zone-2-Ausdauer", "Alkohol & späte, große Mahlzeiten reduzieren", "Auf Erholung & Schlaf achten"] },
-  { key: "hrv", label: "HRV", unit: " ms", ref: 70, opt: 100, dir: "high", span: 50, weight: 2,
-    why: "Herzratenvariabilität – Zeichen eines erholten, anpassungsfähigen Nervensystems. Stark individuell, Trend zählt mehr als der Absolutwert.",
-    tips: ["Schlafqualität verbessern", "Atem-/Entspannungsübungen", "Belastung & Alkohol dosieren"] },
-  { key: "sleep", label: "Schlaf", unit: " h", ref: 7.5, opt: 8, dir: "high", span: 1.5, weight: 2,
-    why: "Schlafdauer pro Nacht. Unter 7 h beschleunigt das Altern messbar – Hormone, Regeneration und Immunsystem leiden.",
-    tips: ["Feste Schlafenszeiten", "Bildschirm & Koffein am Abend meiden", "Kühl & dunkel schlafen"] },
-  { key: "act", label: "Aktivität", unit: " kcal", ref: 900, opt: 1500, dir: "high", span: 600, weight: 2,
-    why: "Aktiv verbrannte Kalorien pro Tag (Bewegung & Training, ohne Grundumsatz).",
-    tips: ["Trainingsvolumen erhöhen", "Mehr Alltagsbewegung", "Weniger am Stück sitzen"] },
-  { key: "steps", label: "Schritte", unit: "", ref: 9000, opt: 12000, dir: "high", span: 5000, weight: 1.5,
-    why: "Tägliche Schritte. Schon ~8.000/Tag senken die Sterblichkeit deutlich – die Alltagsbewegung (NEAT) wird oft unterschätzt.",
-    tips: ["Spaziergänge einplanen", "Treppe statt Aufzug", "Telefonieren im Gehen"] },
-  { key: "strength", label: "Kraft/Woche", unit: " min", ref: 150, opt: 200, dir: "high", span: 150, weight: 1.5,
-    why: "Krafttraining pro Woche. Erhält Muskelmasse & Knochendichte – einer der wichtigsten Hebel gegen das Altern.",
-    tips: ["2–3 Krafteinheiten / Woche", "Progressiv schwerer werden", "Große Grundübungen priorisieren"] },
-  { key: "bodyFat", label: "Körperfett", unit: " %", ref: 18, opt: 11, dir: "low", span: 8, weight: 2,
-    why: "Körperfettanteil (von deiner Arboleaf-Waage). Im athletischen Bereich (Männer ~10–15 %) stehen niedrigere Werte für mehr Muskelanteil und bessere Stoffwechselgesundheit – zu niedrig ist aber ungesund. Reines Körpergewicht fließt bewusst nicht ein, da es ohne Körperzusammensetzung nichts über Gesundheit aussagt.",
-    tips: ["Leichtes, moderates Kaloriendefizit", "Protein hoch halten (Muskelerhalt)", "Krafttraining beibehalten", "Ausreichend Schlaf & wenig Alkohol"] },
-];
-// Fürs Tempo nur die täglichen Metriken (VO₂max & Kraft haben keinen Tagesverlauf).
-const PACE_METRICS = AGE_METRICS.filter((m) => ["rhf", "hrv", "sleep", "act", "steps"].includes(m.key));
-
-function bioAge(data) {
-  const bday = data.coros && data.coros.profile && data.coros.profile.birthday;
-  if (!bday) return null;
-  const b = new Date(bday + "T00:00:00"); const now = new Date();
-  // Exaktes Alter inkl. Nachkommastelle (taggenau), z.B. 26,8 statt 26.
-  const chrono = Math.round(((now.getTime() - b.getTime()) / (365.2425 * 864e5)) * 10) / 10;
-  if (!chrono || chrono < 10 || chrono > 100) return null;
-
-  const win = (n) => Array.from({ length: n }, (_, i) => dstr(i + 1));
-  const avgKey = (dds, key) => { const xs = dds.map((d) => (data.context[d] || {})[key]).filter((v) => typeof v === "number"); return xs.length ? xs.reduce((a, x) => a + x, 0) / xs.length : null; };
-  const avgAct = (dds) => { const xs = dds.map((d) => actOf(data, d)).filter((v) => typeof v === "number"); return xs.length ? xs.reduce((a, x) => a + x, 0) / xs.length : null; };
-  const strengthPerWeek = (dds) => { const s = (data.workouts || []).filter((w) => dds.includes(w.date)).reduce((a, w) => a + (w.durationMin || 0), 0); return s / (dds.length / 7); };
-
-  // Beitrags-Modell über die letzten 14 Tage. avgOf kennt die Spezialquellen
-  // (Aktivität inkl. manueller Korrektur, VO₂max/Kraft aus anderen Quellen).
-  const dd = win(14);
-  const avgOf = (dds, key) => {
-    if (key === "act") return avgAct(dds);
-    if (key === "vo2") return data.coros && data.coros.fitness ? data.coros.fitness.vo2max : null;
-    if (key === "strength") return strengthPerWeek(dds);
-    // Körperfett: aktuellster Messwert (bis 45 Tage zurück, inkl. heute) statt
-    // Mittel — Körperzusammensetzung ist ein Ist-Wert, oft nur sporadisch gemessen.
-    if (key === "bodyFat") { for (let i = 0; i <= 45; i++) { const c = data.context[dstr(i)] || {}; if (typeof c.bodyFat === "number") return c.bodyFat; } return null; }
-    return avgKey(dds, key);
-  };
-
-  // Kalibrierung: das Roh-Modell fällt großzügig aus (Summe vieler Top-Metriken).
-  // CALIB eicht die Gesamt-Skala an Felix' bekanntes WHOOP-Alter (~20–21) an,
-  // ohne die Verhältnisse der Faktoren untereinander zu verzerren.
-  const CALIB = 0.7;
-  const factors = []; let delta = 0;
-  for (const m of AGE_METRICS) {
-    const val = avgOf(dd, m.key);
-    if (val == null) continue;
-    const dir = m.dir === "high" ? val - m.ref : m.ref - val;
-    const years = clampN((dir / m.span) * m.weight, -m.weight, m.weight) * CALIB;
-    delta -= years; // jünger → Alter runter
-    factors.push({ ...m, valNum: val, val: (Math.round(val * 10) / 10).toLocaleString("de-DE") + m.unit, years: Math.round(years * 10) / 10, good: years >= 0 });
-  }
-
-  let bio = chrono + delta;
-  bio = Math.max(chrono - 12, Math.min(chrono + 18, bio));
-
-  // Pace of Aging: letzte 7 Tage vs. die 3 Wochen davor. Fair: nur Metriken
-  // vergleichen, die in BEIDEN Fenstern Daten haben (sonst verzerrt z. B. eine
-  // fehlende HRV-Historie den Trend). 1,0× = du hältst dein Niveau konstant.
-  const dRecent = win(7); const dBase = Array.from({ length: 21 }, (_, i) => dstr(i + 8));
-  let dRec = 0, dBaseP = 0, paceUsed = 0;
-  for (const m of PACE_METRICS) {
-    const a = avgOf(dRecent, m.key), b2 = avgOf(dBase, m.key);
-    if (a == null || b2 == null) continue;
-    const f = (v) => clampN(((m.dir === "high" ? v - m.ref : m.ref - v) / m.span) * m.weight, -m.weight, m.weight);
-    dRec -= f(a); dBaseP -= f(b2); paceUsed++;
-  }
-  const pace = paceUsed ? clampN(Math.round((1 + (dRec - dBaseP) / 10) * 100) / 100, 0.5, 1.5) : 1;
-
-  // Das Tempo ist ein Trend (aktuell vs. eigener Schnitt davor). Ohne genug
-  // Baseline-Historie wäre der Wert irreführend → erst ab ~14 Tagen im
-  // Vergleichsfenster freigeben. histDays = Tage mit Daten in den letzten 28.
-  const hasData = (dds) => dds.filter((d) => { const c = data.context[d] || {}; return c.rhf != null || c.hrv != null || c.sleep != null || c.steps != null || actOf(data, d) != null; }).length;
-  const paceReady = hasData(dBase) >= 14;
-  const histDays = hasData(win(28));
-
-  return { chrono, bio: Math.round(bio * 10) / 10, delta: Math.round(delta * 10) / 10, pace, paceReady, histDays, factors };
-}
-
-// Organischer, sich verformender „Alters-Blob" (grün = jung) mit schwebenden Partikeln.
-function AgeBlob({ chrono, bio }) {
-  const diff = chrono - bio;                              // + = jünger
-  const col = diff >= -0.5 ? H.up : diff > -4 ? H.amber : H.down;
-  const t = clampN((diff + 6) / 16, 0, 1);                // 0..1 → jünger = größer/satter
-  const size = Math.round(212 + t * 40);
-  // Partikel deterministisch (stabil über Renders, kein Flackern).
-  const dots = useMemo(() => {
-    let seed = Math.round(bio * 131 + chrono * 17) || 1;
-    const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
-    return Array.from({ length: 52 }, () => {
-      const ang = rnd() * Math.PI * 2, rad = 0.24 + rnd() * 0.5;
-      return {
-        x: 50 + Math.cos(ang) * rad * 50, y: 50 + Math.sin(ang) * rad * 50,
-        s: (1.4 + rnd() * 3.4).toFixed(1), d: (rnd() * 4).toFixed(2), du: (2.4 + rnd() * 3).toFixed(2),
-      };
-    });
-  }, [bio, chrono]);
-  const grad = `radial-gradient(circle at 50% 50%, #04110a 0%, #04110a 25%, ${col}33 37%, ${col}aa 51%, ${col}dd 60%, ${col}77 72%, ${col}22 87%, transparent 100%)`;
-  return (
-    <div style={{ position: "relative", width: size, height: size, margin: "8px auto 0" }}>
-      <div style={{ position: "absolute", inset: -26, background: `radial-gradient(circle, ${col}40 0%, transparent 62%)`, filter: "blur(20px)", animation: "glowPulse 5.5s ease-in-out infinite" }} />
-      <div style={{ position: "absolute", inset: 0, background: grad, borderRadius: "46% 54% 57% 43% / 49% 45% 55% 51%", filter: "blur(1.5px)", boxShadow: `inset 0 0 55px ${col}55`, animation: "blobMorph 10s ease-in-out infinite" }} />
-      {dots.map((p, i) => (
-        <span key={i} style={{ position: "absolute", left: p.x + "%", top: p.y + "%", width: p.s + "px", height: p.s + "px", borderRadius: "50%", background: col, transform: "translate(-50%,-50%)", boxShadow: `0 0 ${p.s * 2.5}px ${col}`, animation: `twinkle ${p.du}s ease-in-out ${p.d}s infinite` }} />
-      ))}
-      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
-        <div style={{ fontSize: 62, fontWeight: 830, letterSpacing: -2.5, color: H.text, lineHeight: 1, fontVariantNumeric: "tabular-nums", textShadow: "0 2px 20px rgba(0,0,0,.5)" }}>{de1(bio)}</div>
-        <div style={{ fontSize: 10.5, letterSpacing: 1.8, textTransform: "uppercase", color: H.sub, fontWeight: 750, marginTop: 7 }}>Biologisches Alter</div>
-      </div>
-    </div>
-  );
-}
-
-// Alterungs-Tempo als Skala −1.0× … 1.0× … 3.0× mit Marker.
-function PaceBar({ pace }) {
-  const min = -1, max = 3;
-  const pos = clampN((pace - min) / (max - min), 0, 1) * 100;
-  const good = pace <= 1;
-  const c = good ? H.up : H.amber;
-  return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 12 }}>
-        <div>
-          <div style={{ fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase", color: H.faint, fontWeight: 700 }}>Alterungs-Tempo</div>
-          <div style={{ fontSize: 12.5, color: H.sub, marginTop: 3 }}>{good ? "langsamer als normal" : "schneller als normal"}</div>
-        </div>
-        <div style={{ fontSize: 32, fontWeight: 830, color: c, letterSpacing: -1, lineHeight: 1 }}>{de1(pace)}×</div>
-      </div>
-      <div style={{ position: "relative", height: 24 }}>
-        <div style={{ position: "absolute", top: 8, left: 0, right: 0, display: "flex", justifyContent: "space-between" }}>
-          {Array.from({ length: 33 }, (_, i) => { const near = Math.abs((i / 32) * 100 - pos) < 4; return <span key={i} style={{ width: 2, height: 8, borderRadius: 2, background: H.line, opacity: near ? 0 : 1 }} />; })}
-        </div>
-        <div style={{ position: "absolute", top: 0, left: pos + "%", transform: "translateX(-50%)", width: 4, height: 24, borderRadius: 3, background: c, boxShadow: `0 0 12px ${c}` }} />
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 11, color: H.faint, fontWeight: 600 }}>
-        <span>langsam</span><span>1.0×</span><span>schnell</span>
-      </div>
-    </div>
-  );
-}
-
-function BioAge({ data }) {
-  const [sel, setSel] = useState(null);
-  const r = bioAge(data);
-  if (!r) return (
-    <Page title="Healthspan" sub="Biologisches Alter aus deinen Coros-Daten">
-      <Card><div style={{ fontSize: 14, color: H.sub, lineHeight: 1.55 }}>Sobald Coros dein Profil (Geburtsdatum) und ein paar Tage Health-Daten synchronisiert hat, erscheint hier dein biologisches Alter. Stoße auf „Übersicht" einen Sync an.</div></Card>
-    </Page>
-  );
-  const younger = r.bio <= r.chrono;
-  const diff = Math.round(Math.abs(r.chrono - r.bio) * 10) / 10;
-  const diffCol = younger ? H.up : H.down;
-  return (
-    <div style={{ padding: "22px 18px 8px" }}>
-      <div style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 12, letterSpacing: 2.5, textTransform: "uppercase", color: H.sub, fontWeight: 820 }}>Healthspan</div>
-        <div style={{ fontSize: 11.5, color: H.faint, marginTop: 3 }}>aktualisiert mit jedem Sync</div>
-      </div>
-
-      <AgeBlob chrono={r.chrono} bio={r.bio} />
-
-      <div style={{ textAlign: "center", marginTop: 14 }}>
-        <div style={{ fontSize: 20, fontWeight: 830, color: diffCol, letterSpacing: -0.4 }}>{diff === 0 ? "genau dein Alter" : de1(diff) + " Jahre " + (younger ? "jünger" : "älter")}</div>
-        <div style={{ fontSize: 13, color: H.sub, marginTop: 4 }}>Chronologisch bist du {de1(r.chrono)}</div>
-      </div>
-
-      <Card style={{ marginTop: 20 }}>
-        {r.paceReady ? (<>
-          <PaceBar pace={r.pace} />
-          <div style={{ fontSize: 12, color: H.sub, marginTop: 15, lineHeight: 1.5 }}>{r.pace < 1 ? "Du alterst aktuell langsamer als die Zeit — deine Gewohnheiten zahlen sich aus. 💪" : r.pace > 1 ? "Aktuell alterst du etwas schneller — Schlaf & Erholung priorisieren." : "Du alterst im Takt der Zeit."}</div>
-        </>) : (<>
-          <div style={{ fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase", color: H.faint, fontWeight: 700 }}>Alterungs-Tempo</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 11 }}>
-            <span className="spin" style={{ width: 15, height: 15, border: "2px solid " + H.line, borderTopColor: H.blue, borderRadius: "50%", flexShrink: 0 }} />
-            <div style={{ fontSize: 15, fontWeight: 780 }}>Sammelt noch Daten</div>
-          </div>
-          <div style={{ fontSize: 12, color: H.sub, marginTop: 10, lineHeight: 1.5 }}>Das Tempo vergleicht deine letzten Tage mit deinem eigenen Schnitt der Wochen davor — ab ~4 Wochen täglicher Coros-Daten wird es aussagekräftig.</div>
-          <div style={{ marginTop: 12 }}>
-            <div style={{ height: 6, borderRadius: 4, background: H.bg2, overflow: "hidden" }}><div className="b" style={{ width: clampN((r.histDays / 28) * 100, 4, 100) + "%", height: "100%", background: H.grad, borderRadius: 4 }} /></div>
-            <div style={{ fontSize: 11.5, color: H.faint, marginTop: 6, fontWeight: 600 }}>{r.histDays} von ~28 Tagen</div>
-          </div>
-        </>)}
-      </Card>
-
-      <Label style={{ margin: "22px 4px 8px" }}>Was dein Alter beeinflusst · zum Öffnen tippen</Label>
-      {r.factors.map((f, i) => (
-        <Card key={i} onClick={() => setSel(f)} className="press" style={{ marginBottom: 8, padding: "12px 15px", display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14.5, fontWeight: 700 }}>{f.label}</div>
-            <div style={{ fontSize: 12, color: H.faint, marginTop: 1 }}>{f.val}</div>
-          </div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: f.good ? H.up : H.down, fontVariantNumeric: "tabular-nums" }}>{f.years > 0 ? "−" : f.years < 0 ? "+" : "±"}{de(Math.abs(f.years))} J</div>
-          <ChevronRight size={17} color={H.faint} style={{ flexShrink: 0, marginLeft: -4 }} />
-        </Card>
-      ))}
-      <div style={{ fontSize: 11.5, color: H.faint, textAlign: "center", marginTop: 8, lineHeight: 1.5 }}>Aus VO₂max, Ruhepuls, HRV, Schlaf, Aktivität, Schritten, Kraft & Körperfett. „−" = macht dich jünger.</div>
-
-      {sel && <MetricSheet f={sel} close={() => setSel(null)} />}
-    </div>
-  );
-}
-
-// Detailansicht einer Alters-Metrik: aktueller Wert, Skala mit Normal-/Optimalbereich, Erklärung, Tipps.
-function MetricSheet({ f, close }) {
-  const col = f.good ? H.up : H.down;
-  // Skala von lo..hi um die Referenz; „gut" liegt Richtung Zielwert (opt).
-  const lo = f.dir === "high" ? f.ref - f.span : f.ref - f.span;
-  const hi = f.dir === "high" ? f.ref + f.span : f.ref + f.span;
-  const pct = (v) => clampN(((v - lo) / (hi - lo)) * 100, 0, 100);
-  const valPos = pct(f.valNum), refPos = pct(f.ref);
-  // Grüne „gut"-Zone: bei high rechts der Referenz, bei low links davon.
-  const goodStart = f.dir === "high" ? refPos : 0;
-  const goodEnd = f.dir === "high" ? 100 : refPos;
-  const fmt = (v) => (Math.round(v * 10) / 10).toLocaleString("de-DE");
-  return (
-    <Sheet title={f.label} close={close}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 4 }}>
-        <span style={{ fontSize: 38, fontWeight: 830, letterSpacing: -1, color: H.text }}>{f.val}</span>
-        <span style={{ fontSize: 15, fontWeight: 800, color: col }}>{f.years > 0 ? "−" : f.years < 0 ? "+" : "±"}{de(Math.abs(f.years))} Jahre</span>
-      </div>
-      <div style={{ fontSize: 12.5, color: H.sub, marginBottom: 18 }}>Ø der letzten 14 Tage · {f.good ? "macht dich jünger" : "macht dich älter"}</div>
-
-      <div style={{ position: "relative", height: 40, marginBottom: 6 }}>
-        <div style={{ position: "absolute", top: 15, left: 0, right: 0, height: 8, borderRadius: 5, background: H.bg2, overflow: "hidden" }}>
-          <div style={{ position: "absolute", top: 0, bottom: 0, left: goodStart + "%", width: (goodEnd - goodStart) + "%", background: "rgba(52,224,161,.28)" }} />
-        </div>
-        <div style={{ position: "absolute", top: 12, left: refPos + "%", transform: "translateX(-50%)", width: 2, height: 14, background: H.faint }} />
-        <div style={{ position: "absolute", top: 8, left: valPos + "%", transform: "translateX(-50%)", width: 16, height: 16, borderRadius: "50%", background: col, border: "3px solid " + H.card, boxShadow: `0 0 10px ${col}` }} />
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: H.faint, fontWeight: 600, marginBottom: 20 }}>
-        <span>{fmt(lo)}{f.unit}</span>
-        <span>Referenz {fmt(f.ref)}{f.unit}</span>
-        <span>{fmt(hi)}{f.unit}</span>
-      </div>
-
-      <div style={{ display: "flex", gap: 9, marginBottom: 18 }}>
-        <div style={{ flex: 1, background: H.glass, border: "1px solid " + H.glassLine, borderRadius: 13, padding: "10px 12px" }}>
-          <div style={{ fontSize: 10.5, letterSpacing: 0.5, textTransform: "uppercase", color: H.faint, fontWeight: 700 }}>Referenz (neutral)</div>
-          <div style={{ fontSize: 16, fontWeight: 800, marginTop: 2 }}>{fmt(f.ref)}{f.unit}</div>
-        </div>
-        <div style={{ flex: 1, background: "rgba(52,224,161,.1)", border: "1px solid rgba(52,224,161,.25)", borderRadius: 13, padding: "10px 12px" }}>
-          <div style={{ fontSize: 10.5, letterSpacing: 0.5, textTransform: "uppercase", color: H.up, fontWeight: 700 }}>Zielwert</div>
-          <div style={{ fontSize: 16, fontWeight: 800, marginTop: 2, color: H.up }}>{fmt(f.opt)}{f.unit}</div>
-        </div>
-      </div>
-
-      <div style={{ fontSize: 13.5, color: H.sub, lineHeight: 1.55, marginBottom: 18 }}>{f.why}</div>
-
-      <Label style={{ marginBottom: 10 }}>{f.dir === "high" ? "So verbesserst du das" : "So senkst du das"}</Label>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 4 }}>
-        {f.tips.map((t, i) => (
-          <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-            <span style={{ flexShrink: 0, width: 20, height: 20, borderRadius: "50%", background: H.blueSoft, color: H.blue, fontSize: 11, fontWeight: 800, display: "grid", placeItems: "center", marginTop: 1 }}>{i + 1}</span>
-            <span style={{ fontSize: 13.5, lineHeight: 1.45 }}>{t}</span>
-          </div>
-        ))}
-      </div>
-    </Sheet>
-  );
-}
 
 /* ================= shared ================= */
+// Apple-Seitenkopf: Large Title (34 pt) auf Hauptseiten, kompakter Titel mit
+// „‹ Zurück" (Tint) auf Unterseiten.
 const Page = ({ title, sub, subEl, backFn, action, children }) => (
-  <div style={{ padding: "22px 18px 8px" }}>
-    {backFn && <button onClick={backFn} style={{ all: "unset", cursor: "pointer", color: H.sub, fontSize: 14, fontWeight: 600, marginBottom: 10, display: "inline-block" }}>‹ Zurück</button>}
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}><h1 style={{ fontSize: 27, fontWeight: 820, letterSpacing: -0.7, margin: 0 }}>{title}</h1>{action}</div>
-    {sub && <div style={{ fontSize: 13.5, color: H.sub, margin: "3px 0 16px" }}>{sub}</div>}
-    {subEl && <div style={{ margin: "4px 0 16px" }}>{subEl}</div>}
-    {!sub && !subEl && <div style={{ height: 16 }} />}
+  <div style={{ padding: "8px 16px 8px" }}>
+    {backFn
+      ? <button onClick={backFn} className="press" style={{ all: "unset", cursor: "pointer", color: H.blue, fontSize: 17, display: "inline-flex", alignItems: "center", margin: "10px 0 6px -8px" }}><ChevronLeft size={26} strokeWidth={2.2} />Zurück</button>
+      : <div style={{ height: 22 }} />}
+    <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12 }}>
+      <h1 style={{ fontSize: backFn ? 28 : 34, fontWeight: 700, letterSpacing: "-0.012em", lineHeight: 1.12, margin: 0, minWidth: 0, overflowWrap: "anywhere" }}>{title}</h1>
+      {action && <div style={{ flexShrink: 0, marginBottom: 2 }}>{action}</div>}
+    </div>
+    {sub && <div style={{ fontSize: 15, color: H.sub, margin: "4px 0 22px" }}>{sub}</div>}
+    {subEl && <div style={{ margin: "4px 0 22px" }}>{subEl}</div>}
+    {!sub && !subEl && <div style={{ height: 20 }} />}
     {children}
   </div>
 );
-const Card = ({ children, style, onClick, className }) => <div onClick={onClick} className={"glass" + (className ? " " + className : "")} style={{ background: H.glass, border: "1px solid " + H.glassLine, borderRadius: 20, padding: 16, ...style }}>{children}</div>;
-const Label = ({ children, style }) => <div style={{ fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase", color: H.faint, fontWeight: 700, marginBottom: 8, ...style }}>{children}</div>;
-const Bar = ({ pct, color }) => <div style={{ height: 7, borderRadius: 4, background: H.bg2, overflow: "hidden" }}><div className="b" style={{ width: pct + "%", height: "100%", background: color, borderRadius: 4 }} /></div>;
-const Stat = ({ label, value, accent, color, onClick }) => (<div onClick={onClick} className={(accent ? "" : "glass") + (onClick ? " press" : "")} style={{ flex: 1, minWidth: 0, background: accent ? H.grad : H.glass, border: accent ? "none" : "1px solid " + H.glassLine, borderRadius: 16, padding: "12px", boxShadow: accent ? "0 6px 20px -6px " + H.blueGlow : "none", cursor: onClick ? "pointer" : "default", position: "relative" }}><div style={{ fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase", color: accent ? "rgba(255,255,255,.75)" : H.faint, fontWeight: 700 }}>{label}</div><div style={{ fontSize: 17, fontWeight: 800, marginTop: 3, color: color || (accent ? "#fff" : H.text), fontVariantNumeric: "tabular-nums", letterSpacing: -0.3 }}>{value}</div>{onClick && <BarChart3 size={11} color={accent ? "rgba(255,255,255,.6)" : H.faint} style={{ position: "absolute", top: 10, right: 10 }} />}</div>);
-const Mini = ({ label, v, good }) => <div style={{ flex: 1 }}><div style={{ fontSize: 10, color: H.faint, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 700 }}>{label}</div><div style={{ fontSize: 13, fontWeight: 700, marginTop: 2, color: good === true ? H.up : good === false ? H.down : H.text }}>{v}</div></div>;
-function Ring({ score }) { const r = 36, c = 2 * Math.PI * r, off = c * (1 - score / 100), col = score >= 70 ? H.up : score >= 50 ? H.amber : H.down; return (<svg width="88" height="88" viewBox="0 0 100 100" style={{ flexShrink: 0 }}><circle cx="50" cy="50" r={r} fill="none" stroke={H.bg2} strokeWidth="8" /><circle cx="50" cy="50" r={r} fill="none" stroke={col} strokeWidth="8" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={off} transform="rotate(-90 50 50)" style={{ transition: "stroke-dashoffset .9s ease" }} /><text x="50" y="50" textAnchor="middle" dominantBaseline="central" fill={H.text} fontSize="27" fontWeight="800">{score}</text></svg>); }
+// Grouped-Karte (iOS „inset grouped"): keine Rahmen, keine Schatten.
+const Card = ({ children, style, onClick, className }) => <div onClick={onClick} className={className || ""} style={{ background: H.glass, borderRadius: 16, padding: 16, ...style }}>{children}</div>;
+// Abschnitts-Überschrift im iOS-Stil (13 pt, sekundär).
+const Label = ({ children, style }) => <div style={{ fontSize: 13, color: H.sub, fontWeight: 600, letterSpacing: "-0.005em", marginBottom: 8, ...style }}>{children}</div>;
+const Bar = ({ pct, color }) => <div style={{ height: 6, borderRadius: 3, background: H.bg2, overflow: "hidden" }}><div className="b" style={{ width: pct + "%", height: "100%", background: color, borderRadius: 3 }} /></div>;
+// Kennzahl-Kachel (Apple-Health-Stil): farbiges Label, große gerundete Zahl.
+const Stat = ({ label, value, accent, color, onClick }) => (
+  <div onClick={onClick} className={onClick ? "press" : ""} style={{ flex: 1, minWidth: 0, background: H.glass, borderRadius: 14, padding: "11px 12px 12px", cursor: onClick ? "pointer" : "default", position: "relative" }}>
+    <div style={{ fontSize: 12.5, color: accent ? H.blue : H.sub, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: onClick ? 12 : 0 }}>{label}</div>
+    <div style={{ fontFamily: H.round, fontSize: 21, fontWeight: 600, marginTop: 3, color: color || H.text, fontVariantNumeric: "tabular-nums", letterSpacing: "-0.01em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
+    {onClick && <ChevronRight size={14} color={H.faint} style={{ position: "absolute", top: 12, right: 8 }} />}
+  </div>
+);
+const Mini = ({ label, v, good }) => <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 12, color: H.sub, fontWeight: 500 }}>{label}</div><div style={{ fontFamily: H.round, fontSize: 15, fontWeight: 600, marginTop: 2, color: good === true ? H.up : good === false ? H.down : H.text }}>{v}</div></div>;
 function Chart({ points, unit = " kg", fmt }) {
   const [sel, setSel] = useState(null);
   const ref = useRef(null);
@@ -2102,87 +1713,106 @@ function Chart({ points, unit = " kg", fmt }) {
   const labelLeft = Math.max(14, Math.min(86, (x(si) / W) * 100));
   return (
     <div ref={ref} style={{ position: "relative", touchAction: "pan-y", userSelect: "none", cursor: "pointer" }}
-      onTouchStart={onTouch} onTouchMove={onTouch} onMouseDown={pick && ((e) => pick(e.clientX))} onMouseMove={onMouse}>
-      <div style={{ position: "absolute", top: -2, left: labelLeft + "%", transform: "translateX(-50%)", background: H.grad, color: "#fff", fontSize: 11, fontWeight: 750, padding: "3px 9px", borderRadius: 9, whiteSpace: "nowrap", pointerEvents: "none", boxShadow: "0 4px 12px -4px " + H.blueGlow }}>{fv(points[si].val)}{unit} · {fmtShort(points[si].date)}</div>
+      onTouchStart={onTouch} onTouchMove={onTouch} onMouseDown={(e) => pick(e.clientX)} onMouseMove={onMouse}>
+      <div style={{ position: "absolute", top: -2, left: labelLeft + "%", transform: "translateX(-50%)", background: H.cardHi, color: H.text, fontFamily: H.round, fontSize: 12, fontWeight: 600, padding: "3px 9px", borderRadius: 8, whiteSpace: "nowrap", pointerEvents: "none" }}>{fv(points[si].val)}{unit} · {fmtShort(points[si].date)}</div>
       <svg viewBox={"0 0 " + W + " " + Ht} style={{ width: "100%", display: "block", marginTop: 14 }}>
-        <defs><linearGradient id="cg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={H.blue} stopOpacity="0.28" /><stop offset="100%" stopColor={H.blue} stopOpacity="0" /></linearGradient></defs>
+        <defs><linearGradient id="cg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={H.blue} stopOpacity="0.22" /><stop offset="100%" stopColor={H.blue} stopOpacity="0" /></linearGradient></defs>
         <path d={area} fill="url(#cg)" />
         <path d={line} fill="none" stroke={H.blue} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-        <line x1={x(si)} y1={pad.t - 6} x2={x(si)} y2={Ht - pad.b} stroke={H.blue} strokeWidth="1" strokeDasharray="3 3" opacity="0.5" />
-        {points.map((p, i) => { const on = i === si; return <circle key={i} cx={x(i)} cy={y(p.val)} r={on ? 6 : 3} fill={on ? H.blue : H.card} stroke={H.blue} strokeWidth="2" />; })}
+        <line x1={x(si)} y1={pad.t - 6} x2={x(si)} y2={Ht - pad.b} stroke={H.sub} strokeWidth="1" strokeDasharray="3 3" opacity="0.5" />
+        {points.map((p, i) => { const on = i === si; return <circle key={i} cx={x(i)} cy={y(p.val)} r={on ? 5.5 : 2.5} fill={on ? H.blue : H.card} stroke={H.blue} strokeWidth="2" />; })}
         <text x={x(0)} y={Ht - 5} fontSize="10" fill={H.faint}>{fmtShort(points[0].date)}</text>
         <text x={x(points.length - 1)} y={Ht - 5} fontSize="10" fill={H.faint} textAnchor="end">{fmtShort(points[points.length - 1].date)}</text>
       </svg>
     </div>
   );
 }
+// iOS-Sheet: Griff oben, großer Titel, runder Schließen-Knopf, fährt von unten
+// mit iOS-Kurve ein. full=true: fast bildschirmhoch (Tastatur verdeckt nichts).
 function Sheet({ title, close, children, full }) {
-  // full=true: fast bildschirmhoch, oben verankert — so verdeckt die Tastatur
-  // Eingabefeld & Ergebnisse nicht (z.B. Lebensmittelsuche). Sonst Bottom-Sheet.
   const inner = full
-    ? { height: "92dvh", maxHeight: "92dvh", display: "flex", flexDirection: "column", borderRadius: "20px 20px 0 0" }
-    : { maxHeight: "82%", overflowY: "auto", borderRadius: "20px 20px 0 0" };
-  const overlay = (<div onClick={close} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 70 }}>
-    <div onClick={(e) => e.stopPropagation()} className={full ? "" : "scroll"} style={{ width: "100%", maxWidth: 460, background: H.card, border: "1px solid " + H.line, borderBottom: "none", padding: 18, boxSizing: "border-box", ...inner }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexShrink: 0 }}><span style={{ fontSize: 17, fontWeight: 780 }}>{title}</span><button onClick={close} className="press" style={{ all: "unset", cursor: "pointer", color: H.sub }}><X size={20} /></button></div>
+    ? { height: "92dvh", maxHeight: "92dvh", display: "flex", flexDirection: "column" }
+    : { maxHeight: "88dvh", overflowY: "auto" };
+  const overlay = (<div onClick={close} className="scrim" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 70 }}>
+    <div onClick={(e) => e.stopPropagation()} className={"sheet" + (full ? "" : " scroll")} style={{ width: "100%", maxWidth: 460, background: H.card, borderRadius: "14px 14px 0 0", padding: "7px 16px calc(18px + env(safe-area-inset-bottom))", boxSizing: "border-box", ...inner }}>
+      <div style={{ width: 36, height: 5, borderRadius: 3, background: "rgba(235,235,245,0.3)", margin: "0 auto 12px", flexShrink: 0 }} />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 16, flexShrink: 0 }}>
+        <span style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.01em" }}>{title}</span>
+        <button onClick={close} className="press" aria-label="Schließen" style={{ all: "unset", cursor: "pointer", width: 30, height: 30, borderRadius: 15, background: H.bg2, display: "grid", placeItems: "center", color: H.sub, flexShrink: 0 }}><X size={16} strokeWidth={2.6} /></button>
+      </div>
       {full ? <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>{children}</div> : children}
     </div></div>);
-  // Via Portal direkt an den <body>, damit transformierte Vorfahren (Tab-Fade auf
-  // iOS) das position:fixed-Overlay nicht ans Seitenende schieben.
+  // Via Portal direkt an den <body>, damit transformierte Vorfahren das
+  // position:fixed-Overlay nicht ans Seitenende schieben.
   return typeof document !== "undefined" ? createPortal(overlay, document.body) : overlay;
 }
-const Field = ({ label, children }) => <div style={{ marginBottom: 12 }}><div style={{ fontSize: 12, color: H.sub, marginBottom: 6 }}>{label}</div>{children}</div>;
-const sheetInput = { width: "100%", padding: "12px 14px", borderRadius: 11, border: "1px solid transparent", background: H.bg2, color: H.text, fontSize: 15, boxSizing: "border-box", outline: "none" };
-const navBtn = { all: "unset", cursor: "pointer", padding: "4px 10px", display: "grid", placeItems: "center" };
-const iconBtn = { all: "unset", cursor: "pointer", width: 38, height: 38, borderRadius: 11, background: H.card, border: "1px solid " + H.line, display: "grid", placeItems: "center" };
+// iOS-Segment-Steuerung: volle Breite, gewähltes Segment hell abgesetzt.
+const Segmented = ({ value, onChange, items }) => (
+  <div style={{ display: "flex", gap: 2, marginBottom: 16, background: H.bg2, padding: 2, borderRadius: 9 }}>
+    {items.map(([k, l]) => (
+      <button key={k} onClick={() => onChange(k)} style={{ flex: 1, border: "none", cursor: "pointer", padding: "6px 8px", borderRadius: 7, fontSize: 13, fontWeight: 600, background: value === k ? "#636366" : "transparent", color: H.text, boxShadow: value === k ? "0 3px 8px rgba(0,0,0,.12), 0 3px 1px rgba(0,0,0,.04)" : "none", transition: "background .2s ease" }}>{l}</button>
+    ))}
+  </div>
+);
+const primaryBtn = { width: "100%", height: 50, borderRadius: 12, border: "none", background: H.blue, color: "#fff", fontSize: 17, fontWeight: 600, cursor: "pointer" };
+const Field = ({ label, children }) => <div style={{ marginBottom: 14 }}><div style={{ fontSize: 13, color: H.sub, fontWeight: 500, marginBottom: 6, paddingLeft: 2 }}>{label}</div>{children}</div>;
+const sheetInput = { width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid transparent", background: H.bg2, color: H.text, fontSize: 17, boxSizing: "border-box", outline: "none" };
+const navBtn = { all: "unset", cursor: "pointer", padding: "4px 10px", display: "grid", placeItems: "center", color: H.blue };
+const iconBtn = { all: "unset", cursor: "pointer", width: 36, height: 36, borderRadius: 18, background: H.bg2, display: "grid", placeItems: "center" };
+// iOS-Tab-Bar: Material (Blur), Haarlinie oben, Tint für den aktiven Tab.
 function Nav({ tab, setTab, active }) {
-  const items = [{ k: "home", l: "Übersicht", I: Flame }, { k: "train", l: "Training", I: Dumbbell }, { k: "food", l: "Ernährung", I: Utensils }, { k: "age", l: "Alter", I: HeartPulse }];
-  return (<div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 460, zIndex: 50, display: "flex", background: "rgba(12,12,18,.72)", backdropFilter: "blur(24px) saturate(150%)", WebkitBackdropFilter: "blur(24px) saturate(150%)", borderTop: "1px solid " + H.glassLine, padding: "9px 0 calc(9px + env(safe-area-inset-bottom))" }}>
+  const items = [{ k: "home", l: "Übersicht", I: Activity }, { k: "train", l: "Training", I: Dumbbell }, { k: "food", l: "Ernährung", I: Utensils }];
+  return (<nav style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 460, zIndex: 50, display: "flex", background: "rgba(22,22,24,0.8)", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)", borderTop: "0.5px solid rgba(84,84,88,0.65)", padding: "7px 0 calc(3px + env(safe-area-inset-bottom))" }}>
     {items.map(({ k, l, I }) => { const on = tab === k; const dot = active && k === "train"; return (
-      <button key={k} onClick={() => setTab(k)} className="press" style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: on ? H.blue : H.faint, position: "relative" }}>
-        <span style={{ display: "grid", placeItems: "center", width: 44, height: 30, borderRadius: 12, background: on ? H.blueSoft : "transparent", transition: "background .2s ease" }}><I size={20} color={on ? H.blue : H.faint} /></span>
-        {dot && <span style={{ position: "absolute", top: -1, right: "30%", width: 7, height: 7, borderRadius: 7, background: H.up, boxShadow: "0 0 8px " + H.up }} />}
-        <span style={{ fontSize: 10, fontWeight: on ? 750 : 600 }}>{l}</span>
+      <button key={k} onClick={() => setTab(k)} className="tabbtn" aria-current={on ? "page" : undefined} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: on ? H.blue : "#8E8E93", position: "relative", padding: "1px 0 2px" }}>
+        <I size={25} strokeWidth={on ? 2.2 : 1.8} />
+        {dot && <span style={{ position: "absolute", top: 0, left: "calc(50% + 11px)", width: 8, height: 8, borderRadius: 4, background: H.up }} />}
+        <span style={{ fontSize: 10, fontWeight: 500, letterSpacing: "0.01em" }}>{l}</span>
       </button>); })}
-  </div>);
+  </nav>);
 }
 const Style = () => (<style>{`
   .scroll::-webkit-scrollbar{width:0}
-  .scroll{ -webkit-overflow-scrolling:touch; overscroll-behavior-y:contain; scroll-behavior:smooth; }
-  .glass{ backdrop-filter: blur(22px) saturate(150%); -webkit-backdrop-filter: blur(22px) saturate(150%); box-shadow: 0 8px 30px -12px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06); }
-  .fld{ transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; }
-  .fld:focus{ border-color:` + H.blue + `; background:rgba(124,108,255,.08); box-shadow:0 0 0 3px rgba(124,108,255,.16); }
-  .addset:hover{border-color:` + H.blue + `}
-  .b{transition:width .7s cubic-bezier(.22,1,.36,1)}
-  button,input,textarea{font-family:inherit}
+  .scroll{ -webkit-overflow-scrolling:touch; overscroll-behavior-y:contain; }
+  body{ -webkit-font-smoothing:antialiased; }
+  .fld{ transition: background .15s ease, box-shadow .15s ease; }
+  .fld:focus{ box-shadow:0 0 0 2px ` + H.blue + `; }
+  .fld::placeholder{ color:rgba(235,235,245,0.3); }
+  .b{transition:width .6s cubic-bezier(.32,.72,0,1)}
+  button,input,textarea,select{font-family:inherit}
   *{ -webkit-tap-highlight-color:transparent; }
   button{ touch-action:manipulation; }
-  .press{ transition:transform .16s cubic-bezier(.34,1.56,.64,1), opacity .16s ease, filter .16s ease; }
-  .press:active{ transform:scale(.955); opacity:.9; }
-  .fade-in{ animation:fadeIn .34s cubic-bezier(.22,1,.36,1) both; }
-  .rise > *{ animation:rise .42s cubic-bezier(.22,1,.36,1) both; }
-  .rise > *:nth-child(2){animation-delay:.04s} .rise > *:nth-child(3){animation-delay:.08s}
-  .rise > *:nth-child(4){animation-delay:.12s} .rise > *:nth-child(5){animation-delay:.16s}
-  .rise > *:nth-child(6){animation-delay:.2s} .rise > *:nth-child(n+7){animation-delay:.24s}
-  @keyframes fadeIn{ from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none} }
-  @keyframes rise{ from{opacity:0; transform:translateY(12px) scale(.99)} to{opacity:1; transform:none} }
-  @keyframes popIn{ from{opacity:0; transform:scale(.8)} to{opacity:1; transform:scale(1)} }
+  /* Feedback sofort beim Drücken (nicht erst beim Loslassen) */
+  .press{ transition:transform .12s ease-out, opacity .12s ease-out; }
+  .press:active{ transform:scale(.97); opacity:.7; transition:transform 0s, opacity 0s; }
+  .tabbtn:active{ opacity:.6; }
+  .fade-in{ animation:fadeIn .22s ease both; }
+  .rise > *{ animation:rise .35s cubic-bezier(.32,.72,0,1) both; }
+  .rise > *:nth-child(2){animation-delay:.03s} .rise > *:nth-child(3){animation-delay:.06s}
+  .rise > *:nth-child(4){animation-delay:.09s} .rise > *:nth-child(n+5){animation-delay:.12s}
+  /* Sheet: iOS-Kurve, Scrim blendet mit */
+  .scrim{ animation:scrimIn .3s ease both; }
+  .sheet{ animation:sheetIn .42s cubic-bezier(.32,.72,0,1) both; }
+  @keyframes scrimIn{ from{background:rgba(0,0,0,0)} }
+  @keyframes sheetIn{ from{transform:translateY(100%)} to{transform:none} }
+  @keyframes fadeIn{ from{opacity:0} to{opacity:1} }
+  @keyframes rise{ from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none} }
+  @keyframes popIn{ from{opacity:0; transform:scale(.9)} to{opacity:1; transform:scale(1)} }
   @keyframes popDot{ from{opacity:0; transform:scale(.4)} to{opacity:1; transform:scale(1)} }
   @keyframes draw{ to{ stroke-dashoffset:0 } }
   @keyframes splashOut{ 0%,62%{opacity:1} 100%{opacity:0} }
-  @keyframes blobMorph{
-    0%,100%{ border-radius:46% 54% 57% 43% / 49% 45% 55% 51%; }
-    25%{ border-radius:58% 42% 48% 52% / 56% 50% 50% 44%; }
-    50%{ border-radius:43% 57% 53% 47% / 45% 58% 42% 55%; }
-    75%{ border-radius:52% 48% 43% 57% / 51% 42% 58% 49%; }
-  }
-  @keyframes twinkle{ 0%,100%{opacity:.18; transform:translate(-50%,-50%) scale(.65)} 50%{opacity:1; transform:translate(-50%,-50%) scale(1.15)} }
-  @keyframes glowPulse{ 0%,100%{opacity:.5; transform:scale(.97)} 50%{opacity:.85; transform:scale(1.05)} }
+  .typing i{ width:8px; height:8px; border-radius:4px; background:rgba(235,235,245,0.45); display:block; animation:typing 1.2s ease-in-out infinite; }
+  .typing i:nth-child(2){ animation-delay:.15s } .typing i:nth-child(3){ animation-delay:.3s }
+  @keyframes typing{ 0%,60%,100%{ opacity:.35; transform:none } 30%{ opacity:1; transform:translateY(-2px) } }
   .spin{ animation:spin 1s linear infinite; }
   @keyframes spin{ to{ transform:rotate(360deg) } }
   .rotate-hint{ display:none }
   @media screen and (orientation:landscape) and (max-height:560px){
-    .rotate-hint{ display:flex; position:fixed; inset:0; z-index:300; background:#07070B; color:#F4F3F8; align-items:center; justify-content:center; text-align:center; padding:28px; font-size:16px; font-weight:700; line-height:1.5; }
+    .rotate-hint{ display:flex; position:fixed; inset:0; z-index:300; background:#000; color:#fff; align-items:center; justify-content:center; text-align:center; padding:28px; font-size:17px; font-weight:600; line-height:1.5; }
   }
-  @media (prefers-reduced-motion: reduce){.b,circle,.press,.fade-in,.rise>*{transition:none;animation:none}}
+  @media (prefers-reduced-motion: reduce){
+    .b,circle,.press,.fade-in,.rise>*{transition:none;animation:none}
+    .sheet{ animation:fadeIn .2s ease both; }
+  }
+  @media (prefers-reduced-transparency: reduce){ nav{ background:#161618 !important; backdrop-filter:none !important; -webkit-backdrop-filter:none !important; } }
 `}</style>);

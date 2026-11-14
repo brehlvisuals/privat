@@ -1,9 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import { Manrope } from "next/font/google";
 import "./globals.css";
 import SwRegister from "./sw-register";
-
-const manrope = Manrope({ subsets: ["latin"], variable: "--font-manrope", display: "swap" });
 
 export const metadata: Metadata = {
   title: "Performance OS",
@@ -25,7 +22,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   viewportFit: "cover",
-  themeColor: "#07070B",
+  themeColor: "#000000",
 };
 
 export default function RootLayout({
@@ -34,8 +31,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="de" className={"antialiased " + manrope.variable}>
-      <body style={{ background: "#07070B", margin: 0, fontFamily: "var(--font-manrope), -apple-system, ui-sans-serif, sans-serif" }}>
+    <html lang="de" className="antialiased">
+      <body style={{ background: "#000", margin: 0, fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif" }}>
         {children}
         <SwRegister />
       </body>
