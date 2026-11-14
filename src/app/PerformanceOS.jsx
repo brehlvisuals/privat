@@ -390,6 +390,34 @@ export default function App() {
     if (!activeLoaded.current) { activeLoaded.current = true; return; } // Mount-Lauf überspringen (nichts überschreiben)
     try { if (active) localStorage.setItem("perfos_active", JSON.stringify(active)); else localStorage.removeItem("perfos_active"); } catch (e) {}
   }, [active]);
+  // iOS-PWA-Kaltstart-Bug: Beim Start vom Home-Bildschirm meldet iOS kurz einen um
+  // ~Statusleisten-Höhe zu kurzen Viewport → unten fixierte Leisten schweben zu hoch,
+  // bis iOS (z.B. beim ersten Wischen) neu rechnet. Wir messen die Lücke zum
+  // physischen Bildschirm und gleichen sie per CSS-Variable --ios-gap aus; sobald
+  // iOS sich selbst korrigiert, fällt sie auf 0 zurück.
+  useEffect(() => {
+    const ios = /iPhone|iPod/.test(navigator.userAgent);
+    const standalone = window.navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
+    if (!ios || !standalone) return;
+    const root = document.documentElement;
+    const measure = () => {
+      const portrait = window.innerHeight > window.innerWidth;
+      const gap = portrait ? Math.max(screen.height, screen.width) - window.innerHeight : 0;
+      root.style.setProperty("--ios-gap", (gap > 0 && gap <= 80 ? gap : 0) + "px"); // > 80 px = Tastatur o.Ä. → ignorieren
+    };
+    measure();
+    const timers = [60, 250, 800, 2000].map((t) => setTimeout(measure, t));
+    const vv = window.visualViewport;
+    ["resize", "orientationchange", "pageshow"].forEach((e) => window.addEventListener(e, measure));
+    document.addEventListener("visibilitychange", measure);
+    if (vv) vv.addEventListener("resize", measure);
+    return () => {
+      timers.forEach(clearTimeout);
+      ["resize", "orientationchange", "pageshow"].forEach((e) => window.removeEventListener(e, measure));
+      document.removeEventListener("visibilitychange", measure);
+      if (vv) vv.removeEventListener("resize", measure);
+    };
+  }, []);
   if (!data) return <div style={{ background: H.bg, minHeight: "100dvh" }}>{splash && <Splash />}</div>;
   const commit = (d) => { setData(d); persist(d); };
   const reload = () => load().then(setData);
@@ -410,7 +438,7 @@ export default function App() {
 
         {!chatOpen && (
           <button onClick={() => setChatOpen(true)} aria-label="KI-Coach" className="press"
-            style={{ position: "fixed", bottom: "calc(76px + env(safe-area-inset-bottom))", right: "max(16px, calc(50% - 214px))", width: 52, height: 52, borderRadius: 26, border: "none", cursor: "pointer", zIndex: 45,
+            style={{ position: "fixed", bottom: "calc(76px + env(safe-area-inset-bottom) - var(--ios-gap, 0px))", right: "max(16px, calc(50% - 214px))", width: 52, height: 52, borderRadius: 26, border: "none", cursor: "pointer", zIndex: 45,
               background: H.blue, boxShadow: "0 8px 24px rgba(0,0,0,.55)", display: "grid", placeItems: "center" }}>
             <Sparkles size={23} color="#fff" />
           </button>
@@ -622,7 +650,7 @@ function Coach({ msgs, setMsgs, close, data, commit, busy, setBusy, reset }) {
 
   const canSend = !busy && (text.trim() || img);
   return (
-    <div className="fade-in" style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", flexDirection: "column", background: H.bg }}>
+    <div className="fade-in" style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: "calc(-1 * var(--ios-gap, 0px))", zIndex: 60, display: "flex", flexDirection: "column", background: H.bg }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "calc(10px + env(safe-area-inset-top)) 12px 10px", background: "rgba(22,22,24,0.85)", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)", borderBottom: "0.5px solid rgba(84,84,88,0.65)" }}>
         <button onClick={reset} disabled={busy} className="press" style={{ all: "unset", cursor: busy ? "default" : "pointer", color: busy ? H.faint : H.blue, fontSize: 16, padding: "4px 6px", width: 92 }}>Neuer Chat</button>
         <div style={{ flex: 1, textAlign: "center" }}>
@@ -1737,7 +1765,7 @@ function Sheet({ title, close, children, full }) {
   const inner = full
     ? { height: "92dvh", maxHeight: "92dvh", display: "flex", flexDirection: "column" }
     : { maxHeight: "88dvh", overflowY: "auto" };
-  const overlay = (<div onClick={close} className="scrim" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 70 }}>
+  const overlay = (<div onClick={close} className="scrim" style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: "calc(-1 * var(--ios-gap, 0px))", background: "rgba(0,0,0,.5)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 70 }}>
     <div onClick={(e) => e.stopPropagation()} className={"sheet" + (full ? "" : " scroll")} style={{ width: "100%", maxWidth: 460, background: H.card, borderRadius: "14px 14px 0 0", padding: "7px 16px calc(18px + env(safe-area-inset-bottom))", boxSizing: "border-box", ...inner }}>
       <div style={{ width: 36, height: 5, borderRadius: 3, background: "rgba(235,235,245,0.3)", margin: "0 auto 12px", flexShrink: 0 }} />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 16, flexShrink: 0 }}>
@@ -1766,7 +1794,7 @@ const iconBtn = { all: "unset", cursor: "pointer", width: 36, height: 36, border
 // iOS-Tab-Bar: Material (Blur), Haarlinie oben, Tint für den aktiven Tab.
 function Nav({ tab, setTab, active }) {
   const items = [{ k: "home", l: "Übersicht", I: Activity }, { k: "train", l: "Training", I: Dumbbell }, { k: "food", l: "Ernährung", I: Utensils }];
-  return (<nav style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 460, zIndex: 50, display: "flex", background: "rgba(22,22,24,0.8)", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)", borderTop: "0.5px solid rgba(84,84,88,0.65)", padding: "7px 0 calc(3px + env(safe-area-inset-bottom))" }}>
+  return (<nav style={{ position: "fixed", bottom: "calc(-1 * var(--ios-gap, 0px))", left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 460, zIndex: 50, display: "flex", background: "rgba(22,22,24,0.8)", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)", borderTop: "0.5px solid rgba(84,84,88,0.65)", padding: "7px 0 calc(3px + env(safe-area-inset-bottom))" }}>
     {items.map(({ k, l, I }) => { const on = tab === k; const dot = active && k === "train"; return (
       <button key={k} onClick={() => setTab(k)} className="tabbtn" aria-current={on ? "page" : undefined} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: on ? H.blue : "#8E8E93", position: "relative", padding: "1px 0 2px" }}>
         <I size={25} strokeWidth={on ? 2.2 : 1.8} />
