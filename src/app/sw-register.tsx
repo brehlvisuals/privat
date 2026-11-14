@@ -10,7 +10,9 @@ export default function SwRegister() {
   // Unbehandelte Browser-Fehler melden; veraltete Skript-Dateien nach einem
   // Update (PWA lag im Hintergrund) durch einmaliges Neuladen selbst heilen.
   useEffect(() => {
-    const onErr = (ev: ErrorEvent) => { reportClientError(ev.error || ev.message, "window"); if (isChunkError(ev.error || ev.message)) reloadOnce(); };
+    const onErr = (ev: ErrorEvent) => {
+      if (!ev.error && ev.message === "Script error.") return; // fremdes Skript ohne Info (z.B. Erweiterungen) → kein App-Fehler
+      reportClientError(ev.error || ev.message, "window"); if (isChunkError(ev.error || ev.message)) reloadOnce(); };
     const onRej = (ev: PromiseRejectionEvent) => { reportClientError(ev.reason, "promise"); if (isChunkError(ev.reason)) reloadOnce(); };
     window.addEventListener("error", onErr);
     window.addEventListener("unhandledrejection", onRej);
@@ -24,7 +26,7 @@ export default function SwRegister() {
     navigator.serviceWorker
       .register("/sw.js")
       .then((reg) => {
-        reg.update();
+        reg.update().catch(() => {}); // fehlgeschlagenes Update ist kein App-Fehler
         setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
       })
       .catch(() => {});

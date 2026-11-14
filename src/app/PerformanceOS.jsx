@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
+import { reportClientInfo } from "@/lib/client-error";
 import {
   Flame, Dumbbell, Utensils, BarChart3, Plus, X, ChevronLeft, ChevronRight,
   Sparkles, MapPin, Search, Trophy, Watch, Activity, Scale, CheckCircle2,
@@ -390,11 +391,13 @@ export default function App() {
     if (!activeLoaded.current) { activeLoaded.current = true; return; } // Mount-Lauf überspringen (nichts überschreiben)
     try { if (active) localStorage.setItem("perfos_active", JSON.stringify(active)); else localStorage.removeItem("perfos_active"); } catch (e) {}
   }, [active]);
-  // iOS-PWA-Kaltstart-Bug: Beim Start vom Home-Bildschirm meldet iOS kurz einen um
-  // ~Statusleisten-Höhe zu kurzen Viewport → unten fixierte Leisten schweben zu hoch,
-  // bis iOS (z.B. beim ersten Wischen) neu rechnet. Wir messen die Lücke zum
-  // physischen Bildschirm und gleichen sie per CSS-Variable --ios-gap aus; sobald
-  // iOS sich selbst korrigiert, fällt sie auf 0 zurück.
+  // iOS-PWA-Kaltstart-Bugs (Start vom Home-Bildschirm), beide bis zum ersten Wischen:
+  // (1) Viewport kurz ZU KURZ (≈ Statusleisten-Höhe) → Lücke zum physischen
+  //     Bildschirm messen und per CSS-Variable --ios-gap ausgleichen.
+  // (2) Viewport um die obere Safe-Area VERSETZT (Höhe stimmt, im Simulator
+  //     nachgestellt) → Leiste schließt nicht bündig ab. Erkennen und mit einem
+  //     unsichtbaren 1-px-Scrollen reparieren (genau das, was ein Wischen tut);
+  //     Messwerte vorher/nachher gehen als Diagnose an /api/client-error.
   useEffect(() => {
     const ios = /iPhone|iPod/.test(navigator.userAgent);
     const standalone = window.navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
@@ -405,16 +408,39 @@ export default function App() {
       const gap = portrait ? Math.max(screen.height, screen.width) - window.innerHeight : 0;
       root.style.setProperty("--ios-gap", (gap > 0 && gap <= 80 ? gap : 0) + "px"); // > 80 px = Tastatur o.Ä. → ignorieren
     };
+    // Abstand Leisten-Unterkante ↔ Bildschirmrand (0 = bündig, inkl. --ios-gap-Ausgleich).
+    const navOffset = () => {
+      const nav = document.querySelector("nav"); if (!nav) return null;
+      const gap = parseFloat(getComputedStyle(root).getPropertyValue("--ios-gap")) || 0;
+      return Math.round(nav.getBoundingClientRect().bottom - window.innerHeight - gap);
+    };
+    let heals = 0;
+    const heal = () => {
+      const before = navOffset();
+      if (before == null || Math.abs(before) <= 2 || heals >= 3) return;
+      heals++;
+      const prevMin = root.style.minHeight, y = window.scrollY;
+      root.style.minHeight = "calc(100% + 2px)"; // sicherstellen, dass 1 px gescrollt werden kann
+      window.scrollTo(0, y + 1);
+      requestAnimationFrame(() => {
+        window.scrollTo(0, y); root.style.minHeight = prevMin;
+        setTimeout(() => reportClientInfo("ios-layout-heal", { before, after: navOffset(), inner: window.innerHeight, screen: screen.height, vvTop: window.visualViewport ? Math.round(window.visualViewport.offsetTop) : null }), 400);
+      });
+    };
     measure();
-    const timers = [60, 250, 800, 2000].map((t) => setTimeout(measure, t));
+    const timers = [60, 250, 800, 2000].map((t) => setTimeout(measure, t)).concat([400, 1200, 2500, 4500].map((t) => setTimeout(heal, t)));
+    const onVis = () => { if (document.visibilityState === "visible") { measure(); setTimeout(heal, 300); } };
+    const onShow = () => { measure(); setTimeout(heal, 300); };
     const vv = window.visualViewport;
-    ["resize", "orientationchange", "pageshow"].forEach((e) => window.addEventListener(e, measure));
-    document.addEventListener("visibilitychange", measure);
+    ["resize", "orientationchange"].forEach((e) => window.addEventListener(e, measure));
+    window.addEventListener("pageshow", onShow);
+    document.addEventListener("visibilitychange", onVis);
     if (vv) vv.addEventListener("resize", measure);
     return () => {
       timers.forEach(clearTimeout);
-      ["resize", "orientationchange", "pageshow"].forEach((e) => window.removeEventListener(e, measure));
-      document.removeEventListener("visibilitychange", measure);
+      ["resize", "orientationchange"].forEach((e) => window.removeEventListener(e, measure));
+      window.removeEventListener("pageshow", onShow);
+      document.removeEventListener("visibilitychange", onVis);
       if (vv) vv.removeEventListener("resize", measure);
     };
   }, []);

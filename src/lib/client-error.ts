@@ -20,6 +20,15 @@ export function reportClientError(err: unknown, kind: string) {
   } catch { /* Melden darf nie selbst crashen */ }
 }
 
+// Diagnose-Ereignis (kein Absturz) melden, z.B. Layout-Korrekturen auf dem iPhone.
+export function reportClientInfo(kind: string, data: Record<string, unknown>) {
+  try {
+    const payload = JSON.stringify({ kind, ...data, url: typeof location !== "undefined" ? location.href : null, ua: typeof navigator !== "undefined" ? navigator.userAgent : null });
+    const blob = new Blob([payload], { type: "application/json" });
+    if (typeof navigator !== "undefined" && navigator.sendBeacon) navigator.sendBeacon("/api/client-error", blob);
+  } catch { /* nie crashen */ }
+}
+
 // Typischer PWA-Fall nach einem Deploy: Die offene App will eine Skript-Datei
 // der alten Version nachladen, die es nicht mehr gibt.
 export function isChunkError(err: unknown): boolean {
