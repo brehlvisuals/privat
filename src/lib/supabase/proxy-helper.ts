@@ -36,7 +36,8 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/login") ||
     path.startsWith("/auth") ||
     path.startsWith("/api/health-sync") ||
-    path.startsWith("/api/coros");
+    path.startsWith("/api/coros") ||
+    path.startsWith("/api/client-error"); // Fehlerberichte auch ohne gültige Session
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
